@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-_Lattice_ is a hierarchical task manager that lets users quickly capture events by voice, organize them into nested sub-tasks, and manage schedules clearly with local persistence and an intuitive Compose UI.
+_Lattice_ is a hierarchical schedule/task manager that lets users quickly capture events by voice, organize them into nested sub-tasks, and manage schedules clearly with local persistence and an intuitive Compose UI.
 
 Primary use cases
 - Create, edit, delete, and query tasks (CRUD).
