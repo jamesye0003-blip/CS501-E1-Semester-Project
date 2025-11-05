@@ -1,0 +1,81 @@
+package com.example.lattice.ui.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.navigation
+import com.example.lattice.ui.screens.EditorScreen
+import com.example.lattice.ui.screens.LoginScreen
+import com.example.lattice.ui.screens.TaskListScreen
+import com.example.lattice.viewModel.AuthViewModel
+import com.example.lattice.viewModel.TaskViewModel
+
+@Composable
+fun AppNavHost(
+    navController: NavHostController,
+    authViewModel: AuthViewModel,
+    taskViewModel: TaskViewModel
+) {
+    val authState by authViewModel.uiState.collectAsState()
+    
+    // 根据认证状态确定起始路由
+    val startDestination = if (authState.isAuthenticated) {
+        Route.Main.route
+    } else {
+        Route.Login.route
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
+        // Login screen
+        composable(Route.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    // 登录成功后导航到主界面
+                    navController.navigate(Route.Main.route) {
+                        popUpTo(Route.Login.route) { inclusive = true }
+                    }
+                },
+                viewModel = authViewModel
+            )
+        }
+
+        // Main app (requires authentication)
+        navigation(
+            startDestination = Route.Home.route,
+            route = Route.Main.route
+        ) {
+            composable(Route.Home.route) {
+                TaskListScreen(
+                    state = taskViewModel.uiState,
+                    onAddRoot = { navController.navigate(buildEditorRoute(null)) },
+                    onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId)) },
+                    onToggleDone = { id -> taskViewModel.toggleDone(id) },
+                    childrenOf = { pid -> taskViewModel.childrenOf(pid) }
+                )
+            }
+            composable("editor?parent={parent}") { backStackEntry ->
+                val parentId = backStackEntry.arguments?.getString("parent")?.ifEmpty { null }
+                EditorScreen(
+                    onBack = { navController.popBackStack() },
+                    onSave = { title, notes -> taskViewModel.addTask(title, notes, parentId) }
+                )
+            }
+        }
+    }
+
+    // 监听认证状态变化，如果登出则导航回登录页
+    LaunchedEffect(authState.isAuthenticated) {
+        if (!authState.isAuthenticated && navController.currentDestination?.route != Route.Login.route) {
+            navController.navigate(Route.Login.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+}
