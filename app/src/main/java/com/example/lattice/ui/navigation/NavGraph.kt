@@ -57,20 +57,39 @@ fun AppNavHost(
                     onAddRoot = { navController.navigate(buildEditorRoute(null)) },
                     onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
-                    childrenOf = { pid -> taskViewModel.childrenOf(pid) }
+                    childrenOf = { pid -> taskViewModel.childrenOf(pid) },
+                    onEdit = { id  -> navController.navigate(buildEditorRoute(editId = id)) },
+                    onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
+
                 )
             }
-            composable("editor?parent={parent}") { backStackEntry ->
-                val parentId = backStackEntry.arguments?.getString("parent")?.ifEmpty { null }
+            composable("editor?parent={parent}&editId={editId}") { backStackEntry ->
+                val parentId = backStackEntry.arguments?.getString("parent")?.ifBlank { null }
+                val editId   = backStackEntry.arguments?.getString("editId")?.ifBlank { null }
+
+                // 如果是编辑，从 VM 拿到要编辑的任务，做预填
+                val tasks by taskViewModel.uiState.collectAsState()
+                val editing  = tasks.firstOrNull { it.id == editId }
+
                 EditorScreen(
+                    initialTitle = editing?.title ?: "",
+                    initialNotes = editing?.notes ?: "",
+                    primaryLabel = if (editing != null) "Update" else "Save",
                     onBack = { navController.popBackStack() },
-                    onSave = { title, notes -> taskViewModel.addTask(title, notes, parentId) }
+                    onSave = { title, notes ->
+                        if (editing != null) {
+                            taskViewModel.updateTask(editing.id, title, notes)
+                        } else {
+                            taskViewModel.addTask(title, notes, parentId)
+                        }
+                        navController.popBackStack()
+                    }
                 )
             }
         }
     }
 
-    // 监听认证状态变化，如果登出则导航回登录页
+
     LaunchedEffect(authState.isAuthenticated) {
         if (!authState.isAuthenticated && navController.currentDestination?.route != Route.Login.route) {
             navController.navigate(Route.Login.route) {

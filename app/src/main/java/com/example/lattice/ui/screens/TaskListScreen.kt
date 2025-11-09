@@ -18,12 +18,14 @@ fun TaskListScreen(
     onAddRoot: () -> Unit,
     onAddSub: (String) -> Unit,
     onToggleDone: (String) -> Unit,
-    childrenOf: (String?) -> List<Task>
+    childrenOf: (String?) -> List<Task>,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
 ) {
     val tasks by state.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        val roots = remember(tasks) { childrenOf(null) }
+        val roots = tasks.filter { it.parentId == null }
         if (roots.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No tasks yet. Tap + to add a root task.")
@@ -33,9 +35,11 @@ fun TaskListScreen(
                 items(roots, key = { it.id }) { t ->
                     TaskNode(
                         task = t,
-                        childrenOf = childrenOf,
+                        tasks = tasks,
                         onToggleDone = onToggleDone,
-                        onAddSub = onAddSub
+                        onAddSub = onAddSub,
+                        onEdit = onEdit,
+                        onDelete = onDelete
                     )
                 }
             }
