@@ -58,7 +58,6 @@ fun AppNavHost(
                     onAddRoot = { navController.navigate(buildEditorRoute(null)) },
                     onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
-                    childrenOf = { pid -> taskViewModel.childrenOf(pid) },
                     onEdit = { id  -> navController.navigate(buildEditorRoute(editId = id)) },
                     onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
 

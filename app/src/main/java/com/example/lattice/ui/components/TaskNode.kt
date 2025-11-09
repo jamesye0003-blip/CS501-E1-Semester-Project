@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,7 @@ import java.util.Locale
 fun TaskNode(
     task: Task,
     tasks: List<Task>,
+    showCompleted: Boolean,
     onToggleDone: (String) -> Unit,
     onAddSub: (String) -> Unit,
     onEdit: (String) -> Unit,
@@ -50,7 +52,11 @@ fun TaskNode(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    ElevatedCard(Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        Modifier
+            .fillMaxWidth()
+            .alpha(if (showCompleted) 0.6f else 1f)
+    ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val checkboxColor = priorityColor(task.priority)
@@ -67,30 +73,34 @@ fun TaskNode(
                 )
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(task.title, fontWeight = FontWeight.SemiBold)
+                    val titleColor = if (showCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface
+                    val secondaryColor = if (showCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+
+                    Text(task.title, fontWeight = FontWeight.SemiBold, color = titleColor)
                     if (task.description.isNotBlank()) {
-                        Text(task.description, style = MaterialTheme.typography.bodySmall)
+                        Text(task.description, style = MaterialTheme.typography.bodySmall, color = secondaryColor)
                     }
                     val timeText = remember(task.time) { task.time?.let { formatTimePointForList(it) } }
                     if (!timeText.isNullOrBlank()) {
                         Text(
                             text = timeText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (showCompleted) secondaryColor else MaterialTheme.colorScheme.primary
                         )
                     }
                 }
 
-                // ⋮ 溢出菜单
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Add subtask") },
-                            onClick = { menuExpanded = false; onAddSub(task.id) }
-                        )
+                        if (!showCompleted) {
+                            DropdownMenuItem(
+                                text = { Text("Add subtask") },
+                                onClick = { menuExpanded = false; onAddSub(task.id) }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Edit") },
                             onClick = { menuExpanded = false; onEdit(task.id) }
@@ -98,20 +108,25 @@ fun TaskNode(
                         DropdownMenuItem(
                             text = { Text("Delete") },
                             onClick = { menuExpanded = false; onDelete(task.id) },
-                            // 可选：强调删除色
                             trailingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
                         )
                     }
                 }
             }
 
-            val children = remember(tasks, task.id) { tasks.filter { it.parentId == task.id } }
+            val children = remember(tasks, task.id, showCompleted) {
+                tasks.filter { it.parentId == task.id && it.done == showCompleted }
+            }
             if (children.isNotEmpty()) {
-                Column(Modifier.padding(start = 24.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    Modifier.padding(start = 24.dp, top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     children.forEach { child ->
                         TaskNode(
                             task = child,
                             tasks = tasks,
+                            showCompleted = showCompleted,
                             onToggleDone = onToggleDone,
                             onAddSub = onAddSub,
                             onEdit = onEdit,
