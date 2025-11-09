@@ -11,6 +11,7 @@ import androidx.navigation.compose.navigation
 import com.example.lattice.ui.screens.EditorScreen
 import com.example.lattice.ui.screens.LoginScreen
 import com.example.lattice.ui.screens.TaskListScreen
+import com.example.lattice.domain.model.Priority
 import com.example.lattice.viewModel.AuthViewModel
 import com.example.lattice.viewModel.TaskViewModel
 
@@ -73,14 +74,28 @@ fun AppNavHost(
 
                 EditorScreen(
                     initialTitle = editing?.title ?: "",
-                    initialNotes = editing?.notes ?: "",
+                    initialDescription = editing?.description ?: "",
+                    initialPriority = editing?.priority ?: Priority.None,
+                    initialTime = editing?.time,
                     primaryLabel = if (editing != null) "Update" else "Save",
                     onBack = { navController.popBackStack() },
-                    onSave = { title, notes ->
+                    onSave = { title, description, priority, time ->
                         if (editing != null) {
-                            taskViewModel.updateTask(editing.id, title, notes)
+                            taskViewModel.updateTask(
+                                id = editing.id,
+                                title = title,
+                                description = description,
+                                priority = priority,
+                                time = time
+                            )
                         } else {
-                            taskViewModel.addTask(title, notes, parentId)
+                            taskViewModel.addTask(
+                                title = title,
+                                description = description,
+                                priority = priority,
+                                time = time,
+                                parentId = parentId
+                            )
                         }
                         navController.popBackStack()
                     }

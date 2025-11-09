@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.lattice.data.TaskRepository
+import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
+import com.example.lattice.domain.model.TimePoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,8 +33,20 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addTask(title: String, notes: String, parentId: String? = null) {
-        _tasks.value = _tasks.value + Task(title = title, notes = notes, parentId = parentId)
+    fun addTask(
+        title: String,
+        description: String,
+        priority: Priority = Priority.None,
+        time: TimePoint? = null,
+        parentId: String? = null
+    ) {
+        _tasks.value = _tasks.value + Task(
+            title = title,
+            description = description,
+            priority = priority,
+            time = time,
+            parentId = parentId
+        )
         saveNow()
     }
 
@@ -45,8 +59,21 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     fun childrenOf(parentId: String?): List<Task> =
         _tasks.value.filter { it.parentId == parentId }
 
-    fun updateTask(id: String, title: String, notes: String) {
-        _tasks.value = _tasks.value.map { if (it.id == id) it.copy(title = title, notes = notes) else it }
+    fun updateTask(
+        id: String,
+        title: String,
+        description: String,
+        priority: Priority,
+        time: TimePoint?
+    ) {
+        _tasks.value = _tasks.value.map {
+            if (it.id == id) it.copy(
+                title = title,
+                description = description,
+                priority = priority,
+                time = time
+            ) else it
+        }
         saveNow() // 或 saveNow()
     }
 
