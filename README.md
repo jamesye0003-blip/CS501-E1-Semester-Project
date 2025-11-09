@@ -12,3 +12,45 @@ Primary use cases
 
 ## Team Members
 Yuwei Ye, Xian Gong
+
+## Architecture
+
+```
+app/src/main/java/com/example/lattice
+├── MainActivity.kt
+├── data/
+│   ├── AuthRepository.kt
+│   └── TaskRepository.kt
+├── domain/
+│   └── model/
+│       ├── AuthState.kt
+│       ├── Task.kt
+│       └── User.kt
+├── ui/
+│   ├── components/
+│   │   └── TaskNode.kt
+│   ├── navigation/
+│   │   ├── NavGraph.kt
+│   │   └── Routes.kt
+│   ├── screens/
+│   │   ├── EditorScreen.kt
+│   │   ├── LoginScreen.kt
+│   │   └── TaskListScreen.kt
+│   └── theme/
+│       ├── Color.kt
+│       ├── Theme.kt
+│       └── Type.kt
+├── util/
+│   └── Extensions.kt
+└── viewModel/
+    ├── AuthViewModel.kt
+    └── TaskViewModel.kt
+```
+
+This mixed architecture keeps responsibilities separated while staying practical for a Compose-first app:
+- **data** contains repositories and platform integrations (DataStore for auth/tasks persistence).
+- **domain/model** holds pure Kotlin models shared across layers.
+- **viewModel** exposes UI state and business logic to the composables.
+- **ui** is feature-focused: reusable components, navigation graph, feature screens, and theme definitions.
+- **MainActivity** wires everything together with a single-activity Compose setup (auth-aware navigation, Scaffold shell).
+
