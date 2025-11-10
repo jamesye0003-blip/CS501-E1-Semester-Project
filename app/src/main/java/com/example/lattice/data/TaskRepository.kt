@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
+import com.example.lattice.domain.model.TimePoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -20,8 +22,13 @@ class TaskRepository(private val context: Context) {
     private fun serialize(list: List<Task>): String =
         list.joinToString("\n") {
             listOf(
-                it.id, esc(it.title), esc(it.notes),
-                it.done.toString(), it.parentId ?: ""
+                it.id,
+                esc(it.title),
+                esc(it.description),
+                it.done.toString(),
+                it.parentId ?: "",
+                it.priority.name,
+                esc(it.time?.toPayload() ?: "")
             ).joinToString("␞")
         }
 
@@ -30,12 +37,20 @@ class TaskRepository(private val context: Context) {
         else payload.lines().mapNotNull { line ->
             val parts = line.split("␞")
             if (parts.size < 5) return@mapNotNull null
+            val rawDescription = parts.getOrNull(2) ?: ""
+            val parentId = parts.getOrNull(4)?.ifBlank { null }
+            val rawPriority = parts.getOrNull(5)
+            val priority = rawPriority?.let { runCatching { Priority.valueOf(it) }.getOrElse { Priority.None } }
+                ?: Priority.None
+            val rawTime = parts.getOrNull(6)?.let { unesc(it) }.orEmpty()
             Task(
                 id = parts[0],
                 title = unesc(parts[1]),
-                notes = unesc(parts[2]),
+                description = unesc(rawDescription),
+                priority = priority,
+                time = TimePoint.fromPayload(rawTime),
                 done = parts[3].toBooleanStrictOrNull() ?: false,
-                parentId = parts[4].ifBlank { null }
+                parentId = parentId
             )
         }
 
