@@ -10,8 +10,27 @@ Primary use cases
 - Build task trees with unlimited nesting (e.g., goal A split into sub-tasks B/C/D); expand/collapse levels.
 - Use speech-to-text to draft a task quickly (e.g., “tomorrow 9 am review algorithms, three parts: derivation, practice, summary”).
 
-## Team Members
-Yuwei Ye, Xian Gong
+## Build & Run
+
+1. **Clone & Sync**
+   - `git clone https://github.com/<your-org>/CS501-E1-Semester-Project.git`
+   - Open the root project in Android Studio **Giraffe (2022.3.1+)** or newer. Let Gradle sync complete.
+2. **Command-line build**
+   - From the project root run `./gradlew assembleDebug` to produce a debug APK at `app/build/outputs/apk/debug/app-debug.apk`.
+3. **Run on device/emulator**
+   - In Android Studio, select a device (API 28+) and press **Run**.
+   - Or install the debug APK manually: `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+4. **Data reset**
+   - Clear app storage (Settings → Apps → Lattice → Storage) to wipe the DataStore-backed task/auth data during testing.
+
+## Current Features
+
+- **Authentication gate**: Simple login screen persists a token via DataStore and toggles navigation start destinations.
+- **Hierarchical task management**: Create root tasks or sub-tasks, edit details, and delete cascades.
+- **Task metadata**: Assign priority and optional time points; UI badges highlight status.
+- **Completion control**: Toggle done state and auto-hide finished tasks to reduce clutter.
+- **Persistent storage**: All tasks and auth state survive restarts through Jetpack DataStore serialization.
+- **Compose-first UI**: Material 3 styling with responsive layout between task list and editor flows.
 
 ## Architecture
 
@@ -54,3 +73,5 @@ This mixed architecture keeps responsibilities separated while staying practical
 - **ui** is feature-focused: reusable components, navigation graph, feature screens, and theme definitions.
 - **MainActivity** wires everything together with a single-activity Compose setup (auth-aware navigation, Scaffold shell).
 
+## Team Members
+Yuwei Ye, Xian Gong
