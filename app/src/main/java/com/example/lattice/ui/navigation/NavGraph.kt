@@ -19,7 +19,8 @@ import com.example.lattice.viewModel.TaskViewModel
 fun AppNavHost(
     navController: NavHostController,
     authViewModel: AuthViewModel,
-    taskViewModel: TaskViewModel
+    taskViewModel: TaskViewModel,
+    onToggleDark: () -> Unit
 ) {
     val authState by authViewModel.uiState.collectAsState()
     
