@@ -112,8 +112,35 @@ fun EditorScreen(
     var isTranscribing by rememberSaveable { mutableStateOf(false) }
     var speechError by rememberSaveable { mutableStateOf<String?>(null) }
 
-    // 请求 RECORD_AUDIO 权限
-    val permissionLauncher = rememberLauncherForActivityResult(
+    // 请求 RECORD_AUDIO 权限 - 用于 Title
+    val titlePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startRecording(
+                scope = scope,
+                speechRepo = speechRepo,
+                onText = { text ->
+                    // Title 是单行，直接替换或追加（如果已有内容则追加空格）
+                    title = if (title.isBlank()) {
+                        text
+                    } else {
+                        "$title $text"
+                    }
+                },
+                onError = { msg -> speechError = msg },
+                onStateChange = { rec, tr ->
+                    isRecording = rec
+                    isTranscribing = tr
+                }
+            )
+        } else {
+            speechError = "Microphone permission denied."
+        }
+    }
+
+    // 请求 RECORD_AUDIO 权限 - 用于 Description
+    val descriptionPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
@@ -155,14 +182,53 @@ fun EditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Title
+            // Title + 语音按钮
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
                 label = { Text("Title") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                trailingIcon = {
+                    IconButton(
+                        enabled = !isRecording && !isTranscribing,
+                        onClick = {
+                            speechError = null
+                            val granted =
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                            if (granted) {
+                                startRecording(
+                                    scope = scope,
+                                    speechRepo = speechRepo,
+                                    onText = { text ->
+                                        // Title 是单行，直接替换或追加（如果已有内容则追加空格）
+                                        title = if (title.isBlank()) {
+                                            text
+                                        } else {
+                                            "$title $text"
+                                        }
+                                    },
+                                    onError = { msg -> speechError = msg },
+                                    onStateChange = { rec, tr ->
+                                        isRecording = rec
+                                        isTranscribing = tr
+                                    }
+                                )
+                            } else {
+                                titlePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Record voice for title"
+                        )
+                    }
+                }
             )
 
             // Description + 语音按钮
@@ -214,7 +280,7 @@ fun EditorScreen(
                                     }
                                 )
                             } else {
-                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                descriptionPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
                     ) {
