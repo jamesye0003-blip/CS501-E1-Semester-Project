@@ -11,6 +11,7 @@ import androidx.navigation.compose.navigation
 import com.example.lattice.ui.screens.EditorScreen
 import com.example.lattice.ui.screens.LoginScreen
 import com.example.lattice.ui.screens.TaskListScreen
+import com.example.lattice.ui.screens.UserProfileScreen
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.viewModel.AuthViewModel
 import com.example.lattice.viewModel.TaskViewModel
@@ -20,6 +21,7 @@ fun AppNavHost(
     navController: NavHostController,
     authViewModel: AuthViewModel,
     taskViewModel: TaskViewModel,
+    isDarkMode: Boolean,
     onToggleDark: () -> Unit
 ) {
     val authState by authViewModel.uiState.collectAsState()
@@ -99,6 +101,15 @@ fun AppNavHost(
                         }
                         navController.popBackStack()
                     }
+                )
+            }
+            composable(Route.Profile.route) {
+                UserProfileScreen(
+                    username = authState.user?.username ?: "User",
+                    tasksState = taskViewModel.uiState,
+                    isDarkMode = isDarkMode,
+                    onToggleDark = onToggleDark,
+                    onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() }
                 )
             }
         }

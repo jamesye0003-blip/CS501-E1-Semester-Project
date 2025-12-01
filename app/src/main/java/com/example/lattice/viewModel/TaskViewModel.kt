@@ -94,5 +94,32 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         _tasks.value = _tasks.value.filterNot { it.id in toDelete }
         saveNow()
     }
+
+    fun postponeTodayTasks() {
+        val today = java.time.LocalDate.now()
+        _tasks.value = _tasks.value.map { task ->
+            if (!task.done && task.time != null) {
+                val taskDate = if (task.time.time != null) {
+                    java.time.ZonedDateTime.of(task.time.date, task.time.time, task.time.zoneId)
+                        .withZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                } else {
+                    task.time.date.atStartOfDay(task.time.zoneId)
+                        .withZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                }
+                if (taskDate == today) {
+                    // 推迟一天
+                    val newDate = task.time.date.plusDays(1)
+                    task.copy(time = task.time.copy(date = newDate))
+                } else {
+                    task
+                }
+            } else {
+                task
+            }
+        }
+        saveNow()
+    }
 }
 
