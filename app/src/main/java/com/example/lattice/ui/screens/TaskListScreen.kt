@@ -5,17 +5,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,16 +29,22 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +55,18 @@ import com.example.lattice.domain.model.Task
 import com.example.lattice.ui.components.TaskNode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+
+enum class TaskFilter {
+    Today,
+    Tomorrow,
+    Next7Days,
+    ThisMonth,
+    All
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,27 +79,36 @@ fun TaskListScreen(
     onDelete: (String) -> Unit
 ) {
     val tasks by state.collectAsState()
+    
+    val drawerState: DrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var selectedFilter by rememberSaveable { mutableStateOf(TaskFilter.Today) }
 
     var hideDescription by rememberSaveable { mutableStateOf(false) }
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
+    
+    // 根据筛选条件过滤任务
+    val filteredTasks = remember(tasks, selectedFilter) {
+        filterTasksByDate(tasks, selectedFilter)
+    }
 
-    val rootIncomplete = remember(tasks) { tasks.filter { it.parentId == null && !it.done } }
-    val completedRoots = remember(tasks, hideCompleted) {
+    val rootIncomplete = remember(filteredTasks) { filteredTasks.filter { it.parentId == null && !it.done } }
+    val completedRoots = remember(filteredTasks, hideCompleted) {
         if (hideCompleted) emptyList()
-        else tasks.filter { task ->
-            task.done && (task.parentId == null || tasks.firstOrNull { it.id == task.parentId }?.done != true)
+        else filteredTasks.filter { task ->
+            task.done && (task.parentId == null || filteredTasks.firstOrNull { it.id == task.parentId }?.done != true)
         }
     }
-    val completedCount = remember(tasks) { tasks.count { it.done } }
+    val completedCount = remember(filteredTasks) { filteredTasks.count { it.done } }
 
     var completedExpanded by rememberSaveable { mutableStateOf(false) }
     var recentlyCompletedId by remember { mutableStateOf<String?>(null) }
     var showUndo by remember { mutableStateOf(false) }
 
-    LaunchedEffect(tasks, recentlyCompletedId) {
+    LaunchedEffect(filteredTasks, recentlyCompletedId) {
         recentlyCompletedId?.let { id ->
-            val stillDone = tasks.firstOrNull { it.id == id }?.done == true
+            val stillDone = filteredTasks.firstOrNull { it.id == id }?.done == true
             if (!stillDone) {
                 showUndo = false
                 recentlyCompletedId = null
@@ -91,9 +124,9 @@ fun TaskListScreen(
         }
     }
 
-    val handleToggle: (String) -> Unit = remember(tasks) {
+    val handleToggle: (String) -> Unit = remember(filteredTasks) {
         { id ->
-            val task = tasks.firstOrNull { it.id == id }
+            val task = filteredTasks.firstOrNull { it.id == id }
             if (task != null && !task.done) {
                 // Moving to completed
                 recentlyCompletedId = id
@@ -109,14 +142,47 @@ fun TaskListScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("TaskList") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                actions = {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            AppDrawerContent(
+                selectedFilter = selectedFilter,
+                onFilterSelected = { filter ->
+                    selectedFilter = filter
+                    scope.launch {
+                        drawerState.close()
+                    }
+                },
+                onCloseDrawer = {
+                    scope.launch {
+                        drawerState.close()
+                    }
+                }
+            )
+        },
+        gesturesEnabled = true
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("TaskList") },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            scope.launch {
+                                if (drawerState.isClosed) {
+                                    drawerState.open()
+                                } else {
+                                    drawerState.close()
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open Menu")
+                        }
+                    },
+                    actions = {
                         IconButton(onClick = { settingsExpanded = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "Settings")
                         }
@@ -148,12 +214,12 @@ fun TaskListScreen(
                     }
                 )
             },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onAddRoot) {
-                Icon(Icons.Filled.Add, contentDescription = "Add task")
+            floatingActionButton = {
+                FloatingActionButton(onClick = onAddRoot) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add task")
+                }
             }
-        }
-    ) { innerPadding ->
+        ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -185,7 +251,7 @@ fun TaskListScreen(
                     items(rootIncomplete, key = { it.id }) { task ->
                         TaskNode(
                             task = task,
-                            tasks = tasks,
+                            tasks = filteredTasks,
                             showCompleted = false,
                             hideDescription = hideDescription,
                             onToggleDone = handleToggle,
@@ -224,7 +290,7 @@ fun TaskListScreen(
                             items(completedRoots, key = { it.id }) { task ->
                                 TaskNode(
                                     task = task,
-                                    tasks = tasks,
+                                    tasks = filteredTasks,
                                     showCompleted = true,
                                     hideDescription = hideDescription,
                                     onToggleDone = handleToggle,
@@ -262,5 +328,129 @@ fun TaskListScreen(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+fun AppDrawerContent(
+    selectedFilter: TaskFilter,
+    onFilterSelected: (TaskFilter) -> Unit,
+    onCloseDrawer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    ModalDrawerSheet(modifier = modifier.fillMaxWidth(0.8f)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Filter Tasks", style = MaterialTheme.typography.titleMedium)
+                IconButton(onClick = onCloseDrawer) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close Drawer")
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            val filterItems = listOf(
+                TaskFilter.Today to "Today",
+                TaskFilter.Tomorrow to "Tomorrow",
+                TaskFilter.Next7Days to "Next 7 Days",
+                TaskFilter.ThisMonth to "This Month",
+                TaskFilter.All to "All tasks"
+            )
+
+            filterItems.forEach { (filter, label) ->
+                NavigationDrawerItem(
+                    label = { Text(label) },
+                    selected = selectedFilter == filter,
+                    onClick = {
+                        onFilterSelected(filter)
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+            }
+        }
+    }
+}
+
+private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task> {
+    val now = ZonedDateTime.now(ZoneId.systemDefault())
+    val today = now.toLocalDate()
+    
+    return when (filter) {
+        TaskFilter.Today -> {
+            tasks.filter { task ->
+                task.time?.let { timePoint ->
+                    val taskDate = if (timePoint.time != null) {
+                        // 如果有时间，需要转换时区
+                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    } else {
+                        // 如果只有日期，需要考虑时区
+                        val taskInSystemZone = timePoint.date.atStartOfDay(timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                        taskInSystemZone
+                    }
+                    taskDate == today
+                } ?: false // 没有时间的任务不显示在Today中
+            }
+        }
+        TaskFilter.Tomorrow -> {
+            val tomorrow = today.plusDays(1)
+            tasks.filter { task ->
+                task.time?.let { timePoint ->
+                    val taskDate = if (timePoint.time != null) {
+                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    } else {
+                        timePoint.date.atStartOfDay(timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
+                    taskDate == tomorrow
+                } ?: false
+            }
+        }
+        TaskFilter.Next7Days -> {
+            val endDate = today.plusDays(7)
+            tasks.filter { task ->
+                task.time?.let { timePoint ->
+                    val taskDate = if (timePoint.time != null) {
+                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    } else {
+                        timePoint.date.atStartOfDay(timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
+                    taskDate >= today && taskDate <= endDate
+                } ?: false
+            }
+        }
+        TaskFilter.ThisMonth -> {
+            val firstDayOfMonth = today.withDayOfMonth(1)
+            val lastDayOfMonth = today.withDayOfMonth(today.lengthOfMonth())
+            tasks.filter { task ->
+                task.time?.let { timePoint ->
+                    val taskDate = if (timePoint.time != null) {
+                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    } else {
+                        timePoint.date.atStartOfDay(timePoint.zoneId)
+                            .withZoneSameInstant(ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
+                    taskDate >= firstDayOfMonth && taskDate <= lastDayOfMonth
+                } ?: false
+            }
+        }
+        TaskFilter.All -> tasks
     }
 }
