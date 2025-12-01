@@ -4,33 +4,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.lattice.ui.theme.LatticeTheme
 import com.example.lattice.ui.navigation.AppNavHost
@@ -61,25 +50,15 @@ class MainActivity : ComponentActivity() {
                 val authViewModel: AuthViewModel = viewModel()
                 val taskViewModel: TaskViewModel = viewModel()
                 
-                AppNavHost(
+                MainRoot(
                     navController = navController,
                     authViewModel = authViewModel,
-                    taskViewModel = taskViewModel
+                    taskViewModel = taskViewModel,
+                    onToggleDark = {
+                        val current = forcedDark ?: systemIsDark
+                        forcedDark = !current
+                    }
                 )
-                
-                // 只在已认证时显示MainScreen
-                val authState by authViewModel.uiState.collectAsState()
-                if (authState.isAuthenticated) {
-                    MainScreen(
-                        navController = navController,
-                        taskViewModel = taskViewModel,
-                        authViewModel = authViewModel,
-                        onToggleDark = {
-                            val current = forcedDark ?: systemIsDark
-                            forcedDark = !current
-                        }
-                    )
-                }
             }
         }
     }
@@ -87,103 +66,61 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(
+fun MainRoot(
     navController: NavHostController,
-    taskViewModel: TaskViewModel,
     authViewModel: AuthViewModel,
+    taskViewModel: TaskViewModel,
     onToggleDark: () -> Unit
 ) {
-    var selectedIndex by remember { mutableStateOf(0) }
-    var menuExpanded by remember { mutableStateOf(false) }
-    
-    // 同步导航状态和底部导航栏选中状态
-    DisposableEffect(navController) {
-        val listener = androidx.navigation.NavController.OnDestinationChangedListener { controller, destination, arguments ->
-            when (destination.route) {
-                Route.Home.route -> selectedIndex = 0
-                else -> {
-                    if (destination.route?.startsWith("editor") == true) {
-                        selectedIndex = 1
-                    }
-                }
-            }
-        }
-        navController.addOnDestinationChangedListener(listener)
-        onDispose {
-            navController.removeOnDestinationChangedListener(listener)
-        }
-    }
+    val authState by authViewModel.uiState.collectAsState()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    // 登录页不显示底部导航
+    val showBottomBar = currentRoute != Route.Login.route
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Lattice - Task Scheduler") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                actions = {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Dark mode") },
-                            leadingIcon = { Icon(Icons.Filled.DarkMode, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                onToggleDark()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Logout") },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                authViewModel.logout()
-                            }
-                        )
-                    }
-                }
-            )
-        },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                NavigationBarItem(
-                    selected = selectedIndex == 0,
-                    onClick = { 
-                        selectedIndex = 0
-                        if (navController.currentBackStackEntry?.destination?.route != Route.Home.route) {
-                            navController.navigate(Route.Home.route) {
-                                popUpTo(Route.Home.route) { inclusive = false }
-                            }
-                        }
-                    },
-                    icon = { Icon(Icons.Filled.Checklist, contentDescription = "Tasks") },
-                    label = { Text("Tasks") }
-                )
-                NavigationBarItem(
-                    selected = selectedIndex == 1,
-                    onClick = { 
-                        selectedIndex = 1
-                        navController.navigate(buildEditorRoute(null))
-                    },
-                    icon = { Icon(Icons.Filled.Edit, contentDescription = "Input") },
-                    label = { Text("New") }
-                )
-            }
-        },
-        floatingActionButton = {
-            if (navController.currentBackStackEntry?.destination?.route == Route.Home.route) {
-                FloatingActionButton(
-                    onClick = { navController.navigate(buildEditorRoute(null)) }
+            if (showBottomBar && authState.isAuthenticated) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add task")
+                    val selectedIndex = when {
+                        currentRoute == "${Route.Main.route}/${Route.Home.route}" ||
+                            currentRoute == Route.Home.route -> 0
+
+                        currentRoute?.contains("editor") == true -> 1
+
+                        else -> 0
+                    }
+
+                    NavigationBarItem(
+                        selected = selectedIndex == 0,
+                        onClick = {
+                            // Navigate to home - use relative path since we're in main navigation block
+                            val currentRoute = navController.currentBackStackEntry?.destination?.route
+                            if (currentRoute != Route.Home.route && 
+                                currentRoute != "${Route.Main.route}/${Route.Home.route}") {
+                                // Use relative path - navigation system will resolve it within main navigation block
+                                navController.navigate(Route.Home.route) {
+                                    popUpTo(Route.Main.route) { inclusive = false }
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.Checklist, contentDescription = "Tasks") },
+                        label = { Text("Tasks") }
+                    )
+
+                    NavigationBarItem(
+                        selected = selectedIndex == 1,
+                        onClick = {
+                            // Navigate to editor - use relative path since we're in main navigation block
+                            // The navigation system will resolve it within the current navigation context
+                            navController.navigate(buildEditorRoute(null))
+                        },
+                        icon = { Icon(Icons.Filled.Edit, contentDescription = "Input") },
+                        label = { Text("New") }
+                    )
                 }
             }
         }
@@ -192,12 +129,12 @@ fun MainScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
         ) {
             AppNavHost(
                 navController = navController,
                 authViewModel = authViewModel,
-                taskViewModel = taskViewModel
+                taskViewModel = taskViewModel,
+                onToggleDark = onToggleDark
             )
         }
     }
@@ -213,7 +150,8 @@ fun GreetingPreview() {
         AppNavHost(
             navController = navController,
             authViewModel = authViewModel,
-            taskViewModel = taskViewModel
+            taskViewModel = taskViewModel,
+            onToggleDark = {}
         )
     }
 }

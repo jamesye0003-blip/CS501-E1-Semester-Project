@@ -45,6 +45,7 @@ fun TaskNode(
     task: Task,
     tasks: List<Task>,
     showCompleted: Boolean,
+    hideDescription: Boolean = false,
     onToggleDone: (String) -> Unit,
     onAddSub: (String) -> Unit,
     onEdit: (String) -> Unit,
@@ -77,7 +78,7 @@ fun TaskNode(
                     val secondaryColor = if (showCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
 
                     Text(task.title, fontWeight = FontWeight.SemiBold, color = titleColor)
-                    if (task.description.isNotBlank()) {
+                    if (!hideDescription && task.description.isNotBlank()) {
                         Text(task.description, style = MaterialTheme.typography.bodySmall, color = secondaryColor)
                     }
                     val timeText = remember(task.time) { task.time?.let { formatTimePointForList(it) } }
@@ -127,6 +128,7 @@ fun TaskNode(
                             task = child,
                             tasks = tasks,
                             showCompleted = showCompleted,
+                            hideDescription = hideDescription,
                             onToggleDone = onToggleDone,
                             onAddSub = onAddSub,
                             onEdit = onEdit,
