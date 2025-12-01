@@ -109,7 +109,13 @@ fun AppNavHost(
                     tasksState = taskViewModel.uiState,
                     isDarkMode = isDarkMode,
                     onToggleDark = onToggleDark,
-                    onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() }
+                    onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() },
+                    onLogout = {
+                        authViewModel.logout()
+                        navController.navigate(Route.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
                 )
             }
         }

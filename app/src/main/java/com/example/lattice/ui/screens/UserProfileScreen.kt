@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -48,11 +50,12 @@ fun UserProfileScreen(
     tasksState: StateFlow<List<Task>>,
     isDarkMode: Boolean,
     onToggleDark: () -> Unit,
-    onPostponeTodayTasks: () -> Unit
+    onPostponeTodayTasks: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val tasks by tasksState.collectAsState()
     
-    var settingsExpanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
     var showDailyReview by remember { mutableStateOf(false) }
     
     // 过滤今天的任务
@@ -80,22 +83,28 @@ fun UserProfileScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 actions = {
-                    IconButton(onClick = { settingsExpanded = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Settings")
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
                     }
                     DropdownMenu(
-                        expanded = settingsExpanded,
-                        onDismissRequest = { settingsExpanded = false }
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
                     ) {
                         DropdownMenuItem(
                             text = { Text("Dark mode") },
-                            trailingIcon = {
-                                Switch(
-                                    checked = isDarkMode,
-                                    onCheckedChange = { onToggleDark() }
-                                )
-                            },
-                            onClick = { onToggleDark() }
+                            leadingIcon = { Icon(Icons.Filled.DarkMode, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleDark()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Logout") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onLogout()
+                            }
                         )
                     }
                 }
@@ -217,14 +226,14 @@ fun UserProfileScreen(
                             showDailyReview = false
                         }
                     ) {
-                        Text("推迟")
+                        Text("Postpone")
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = { showDailyReview = false }
                     ) {
-                        Text("忽略")
+                        Text("Dismiss")
                     }
                 }
             )
