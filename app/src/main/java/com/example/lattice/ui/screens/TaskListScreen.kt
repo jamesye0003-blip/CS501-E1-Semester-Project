@@ -40,7 +40,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,9 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
 import com.example.lattice.ui.components.TaskNode
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -71,15 +68,13 @@ enum class TaskFilter {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListScreen(
-    state: StateFlow<List<Task>>,
+    tasks: List<Task>,
     onAddRoot: () -> Unit,
     onAddSub: (String) -> Unit,
     onToggleDone: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
-    val tasks by state.collectAsState()
-    
     val drawerState: DrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedFilter by rememberSaveable { mutableStateOf(TaskFilter.Today) }
@@ -87,17 +82,20 @@ fun TaskListScreen(
     var hideDescription by rememberSaveable { mutableStateOf(false) }
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
-    
+
     // 根据筛选条件过滤任务
     val filteredTasks = remember(tasks, selectedFilter) {
         filterTasksByDate(tasks, selectedFilter)
     }
 
-    val rootIncomplete = remember(filteredTasks) { filteredTasks.filter { it.parentId == null && !it.done } }
+    val rootIncomplete = remember(filteredTasks) {
+        filteredTasks.filter { it.parentId == null && !it.done }
+    }
     val completedRoots = remember(filteredTasks, hideCompleted) {
         if (hideCompleted) emptyList()
         else filteredTasks.filter { task ->
-            task.done && (task.parentId == null || filteredTasks.firstOrNull { it.id == task.parentId }?.done != true)
+            task.done && (task.parentId == null ||
+                    filteredTasks.firstOrNull { it.id == task.parentId }?.done != true)
         }
     }
     val completedCount = remember(filteredTasks) { filteredTasks.count { it.done } }
@@ -220,114 +218,116 @@ fun TaskListScreen(
                 }
             }
         ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (rootIncomplete.isEmpty() && completedRoots.isEmpty()) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("No tasks yet. Tap + to add a root task.")
-                }
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
-                        if (rootIncomplete.isEmpty()) {
-                            Text(
-                                text = "All tasks completed!",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
-                        }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                if (rootIncomplete.isEmpty() && completedRoots.isEmpty()) {
+                    Column(
+                        Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("No tasks yet. Tap + to add a root task.")
                     }
-
-                    items(rootIncomplete, key = { it.id }) { task ->
-                        TaskNode(
-                            task = task,
-                            tasks = filteredTasks,
-                            showCompleted = false,
-                            hideDescription = hideDescription,
-                            onToggleDone = handleToggle,
-                            onAddSub = onAddSub,
-                            onEdit = onEdit,
-                            onDelete = onDelete
-                        )
-                    }
-
-                    if (completedRoots.isNotEmpty()) {
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         item {
-                            Column(Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 24.dp, bottom = 8.dp)
-                                        .padding(start = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Completed ($completedCount)",
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    IconButton(onClick = { completedExpanded = !completedExpanded }) {
-                                        Icon(
-                                            imageVector = if (completedExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                                            contentDescription = if (completedExpanded) "Collapse completed" else "Expand completed"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (completedExpanded) {
-                            items(completedRoots, key = { it.id }) { task ->
-                                TaskNode(
-                                    task = task,
-                                    tasks = filteredTasks,
-                                    showCompleted = true,
-                                    hideDescription = hideDescription,
-                                    onToggleDone = handleToggle,
-                                    onAddSub = onAddSub,
-                                    onEdit = onEdit,
-                                    onDelete = onDelete
+                            if (rootIncomplete.isEmpty()) {
+                                Text(
+                                    text = "All tasks completed!",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(top = 16.dp)
                                 )
                             }
                         }
-                    }
-                }
-            }
 
-            AnimatedVisibility(
-                visible = showUndo && recentlyCompletedId != null,
-                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = {
-                        recentlyCompletedId?.let {
-                            onToggleDone(it)
+                        items(rootIncomplete, key = { it.id }) { task ->
+                            TaskNode(
+                                task = task,
+                                tasks = filteredTasks,
+                                showCompleted = false,
+                                hideDescription = hideDescription,
+                                onToggleDone = handleToggle,
+                                onAddSub = onAddSub,
+                                onEdit = onEdit,
+                                onDelete = onDelete
+                            )
                         }
-                        showUndo = false
-                        recentlyCompletedId = null
-                    },
-                    containerColor = Color(0xFFFFD740),
-                    contentColor = Color.Black
+
+                        if (completedRoots.isNotEmpty()) {
+                            item {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 24.dp, bottom = 8.dp)
+                                            .padding(start = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Completed ($completedCount)",
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                        IconButton(onClick = { completedExpanded = !completedExpanded }) {
+                                            Icon(
+                                                imageVector = if (completedExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                                                contentDescription = if (completedExpanded) "Collapse completed" else "Expand completed"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (completedExpanded) {
+                                items(completedRoots, key = { it.id }) { task ->
+                                    TaskNode(
+                                        task = task,
+                                        tasks = filteredTasks,
+                                        showCompleted = true,
+                                        hideDescription = hideDescription,
+                                        onToggleDone = handleToggle,
+                                        onAddSub = onAddSub,
+                                        onEdit = onEdit,
+                                        onDelete = onDelete
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showUndo && recentlyCompletedId != null,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FloatingActionButton(
+                        onClick = {
+                            recentlyCompletedId?.let {
+                                onToggleDone(it)
+                            }
+                            showUndo = false
+                            recentlyCompletedId = null
+                        },
+                        containerColor = Color(0xFFFFD740),
+                        contentColor = Color.Black
                     ) {
-                        Text("Undo")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Undo")
+                        }
                     }
                 }
             }
-        }
         }
     }
 }
@@ -378,7 +378,7 @@ fun AppDrawerContent(
 private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task> {
     val now = ZonedDateTime.now(ZoneId.systemDefault())
     val today = now.toLocalDate()
-    
+
     return when (filter) {
         TaskFilter.Today -> {
             tasks.filter { task ->
@@ -390,15 +390,15 @@ private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task>
                             .toLocalDate()
                     } else {
                         // 如果只有日期，需要考虑时区
-                        val taskInSystemZone = timePoint.date.atStartOfDay(timePoint.zoneId)
+                        timePoint.date.atStartOfDay(timePoint.zoneId)
                             .withZoneSameInstant(ZoneId.systemDefault())
                             .toLocalDate()
-                        taskInSystemZone
                     }
                     taskDate == today
                 } ?: false // 没有时间的任务不显示在Today中
             }
         }
+
         TaskFilter.Tomorrow -> {
             val tomorrow = today.plusDays(1)
             tasks.filter { task ->
@@ -416,6 +416,7 @@ private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task>
                 } ?: false
             }
         }
+
         TaskFilter.Next7Days -> {
             val endDate = today.plusDays(7)
             tasks.filter { task ->
@@ -433,6 +434,7 @@ private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task>
                 } ?: false
             }
         }
+
         TaskFilter.ThisMonth -> {
             val firstDayOfMonth = today.withDayOfMonth(1)
             val lastDayOfMonth = today.withDayOfMonth(today.lengthOfMonth())
@@ -451,6 +453,7 @@ private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task>
                 } ?: false
             }
         }
+
         TaskFilter.All -> tasks
     }
 }

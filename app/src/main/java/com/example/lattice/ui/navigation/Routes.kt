@@ -4,6 +4,7 @@ sealed class Route(val route: String) {
     data object Login : Route("login")
     data object Main : Route("main")
     data object Home : Route("home")
+    data object Profile : Route("profile")
 
     companion object {
         const val EDITOR_ROUTE = "editor?parent={parent}&editId={editId}"

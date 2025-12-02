@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +46,8 @@ class MainActivity : ComponentActivity() {
             var forcedDark: Boolean? by remember { mutableStateOf(null) }
             val systemIsDark = isSystemInDarkTheme()
 
-            LatticeTheme(darkTheme = forcedDark ?: systemIsDark) {
+            val isDarkMode = forcedDark ?: systemIsDark
+            LatticeTheme(darkTheme = isDarkMode) {
                 val navController = rememberNavController()
                 val authViewModel: AuthViewModel = viewModel()
                 val taskViewModel: TaskViewModel = viewModel()
@@ -54,6 +56,7 @@ class MainActivity : ComponentActivity() {
                     navController = navController,
                     authViewModel = authViewModel,
                     taskViewModel = taskViewModel,
+                    isDarkMode = isDarkMode,
                     onToggleDark = {
                         val current = forcedDark ?: systemIsDark
                         forcedDark = !current
@@ -70,6 +73,7 @@ fun MainRoot(
     navController: NavHostController,
     authViewModel: AuthViewModel,
     taskViewModel: TaskViewModel,
+    isDarkMode: Boolean,
     onToggleDark: () -> Unit
 ) {
     val authState by authViewModel.uiState.collectAsState()
@@ -90,6 +94,9 @@ fun MainRoot(
                             currentRoute == Route.Home.route -> 0
 
                         currentRoute?.contains("editor") == true -> 1
+                        
+                        currentRoute == "${Route.Main.route}/${Route.Profile.route}" ||
+                            currentRoute == Route.Profile.route -> 2
 
                         else -> 0
                     }
@@ -121,6 +128,21 @@ fun MainRoot(
                         icon = { Icon(Icons.Filled.Edit, contentDescription = "Input") },
                         label = { Text("New") }
                     )
+                    
+                    NavigationBarItem(
+                        selected = selectedIndex == 2,
+                        onClick = {
+                            val currentRoute = navController.currentBackStackEntry?.destination?.route
+                            if (currentRoute != Route.Profile.route && 
+                                currentRoute != "${Route.Main.route}/${Route.Profile.route}") {
+                                navController.navigate(Route.Profile.route) {
+                                    popUpTo(Route.Main.route) { inclusive = false }
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.Person, contentDescription = "Profile") },
+                        label = { Text("Profile") }
+                    )
                 }
             }
         }
@@ -134,6 +156,7 @@ fun MainRoot(
                 navController = navController,
                 authViewModel = authViewModel,
                 taskViewModel = taskViewModel,
+                isDarkMode = isDarkMode,
                 onToggleDark = onToggleDark
             )
         }
@@ -151,6 +174,7 @@ fun GreetingPreview() {
             navController = navController,
             authViewModel = authViewModel,
             taskViewModel = taskViewModel,
+            isDarkMode = isSystemInDarkTheme(),
             onToggleDark = {}
         )
     }
