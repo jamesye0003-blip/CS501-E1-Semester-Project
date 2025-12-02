@@ -24,8 +24,10 @@ fun AppNavHost(
     isDarkMode: Boolean,
     onToggleDark: () -> Unit
 ) {
+    // 统一在这一层收集来自 ViewModel 的 Flow
     val authState by authViewModel.uiState.collectAsState()
-    
+    val tasks by taskViewModel.uiState.collectAsState()
+
     // 根据认证状态确定起始路由
     val startDestination = if (authState.isAuthenticated) {
         Route.Main.route
@@ -41,7 +43,6 @@ fun AppNavHost(
         composable(Route.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
-                    // 登录成功后导航到主界面
                     navController.navigate(Route.Main.route) {
                         popUpTo(Route.Login.route) { inclusive = true }
                     }
@@ -57,22 +58,25 @@ fun AppNavHost(
         ) {
             composable(Route.Home.route) {
                 TaskListScreen(
-                    state = taskViewModel.uiState,
+                    tasks = tasks,
                     onAddRoot = { navController.navigate(buildEditorRoute(null)) },
                     onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
-                    onEdit = { id  -> navController.navigate(buildEditorRoute(editId = id)) },
+                    onEdit = { id -> navController.navigate(buildEditorRoute(editId = id)) },
                     onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
-
                 )
             }
-            composable("editor?parent={parent}&editId={editId}") { backStackEntry ->
-                val parentId = backStackEntry.arguments?.getString("parent")?.ifBlank { null }
-                val editId   = backStackEntry.arguments?.getString("editId")?.ifBlank { null }
 
-                // 如果是编辑，从 VM 拿到要编辑的任务，做预填
-                val tasks by taskViewModel.uiState.collectAsState()
-                val editing  = tasks.firstOrNull { it.id == editId }
+            composable("editor?parent={parent}&editId={editId}") { backStackEntry ->
+                val parentId = backStackEntry.arguments
+                    ?.getString("parent")
+                    ?.ifBlank { null }
+                val editId = backStackEntry.arguments
+                    ?.getString("editId")
+                    ?.ifBlank { null }
+
+                // 如果是编辑，从当前 tasks 中找到要编辑的任务做预填
+                val editing = tasks.firstOrNull { it.id == editId }
 
                 EditorScreen(
                     initialTitle = editing?.title ?: "",
@@ -103,10 +107,11 @@ fun AppNavHost(
                     }
                 )
             }
+
             composable(Route.Profile.route) {
                 UserProfileScreen(
                     username = authState.user?.username ?: "User",
-                    tasksState = taskViewModel.uiState,
+                    tasks = tasks,
                     isDarkMode = isDarkMode,
                     onToggleDark = onToggleDark,
                     onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() },
@@ -121,9 +126,11 @@ fun AppNavHost(
         }
     }
 
-
+    // 认证状态变为未登录时，强制返回 Login
     LaunchedEffect(authState.isAuthenticated) {
-        if (!authState.isAuthenticated && navController.currentDestination?.route != Route.Login.route) {
+        if (!authState.isAuthenticated &&
+            navController.currentDestination?.route != Route.Login.route
+        ) {
             navController.navigate(Route.Login.route) {
                 popUpTo(0) { inclusive = true }
             }

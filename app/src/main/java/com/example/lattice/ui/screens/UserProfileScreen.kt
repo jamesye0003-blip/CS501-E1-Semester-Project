@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
-import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -47,44 +45,44 @@ import java.time.ZonedDateTime
 @Composable
 fun UserProfileScreen(
     username: String,
-    tasksState: StateFlow<List<Task>>,
+    tasks: List<Task>,
     isDarkMode: Boolean,
     onToggleDark: () -> Unit,
     onPostponeTodayTasks: () -> Unit,
     onLogout: () -> Unit
 ) {
-    val tasks by tasksState.collectAsState()
-    
     var menuExpanded by remember { mutableStateOf(false) }
     var showDailyReview by remember { mutableStateOf(false) }
-    
+
     // 过滤今天的任务
     val todayTasks = remember(tasks) {
         filterTodayTasks(tasks)
     }
-    
+
     val completedTodayTasks = remember(todayTasks) {
         todayTasks.filter { it.done }
     }
-    
+
     val todoTodayTasks = remember(todayTasks) {
         todayTasks.filter { !it.done }
     }
-    
+
     val completedCount = remember(tasks) {
         tasks.count { it.done }
     }
-    
+
+    val totalCount = tasks.size
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Profile") },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 actions = {
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Profile menu")
                     }
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -92,15 +90,34 @@ fun UserProfileScreen(
                     ) {
                         DropdownMenuItem(
                             text = { Text("Dark mode") },
-                            leadingIcon = { Icon(Icons.Filled.DarkMode, contentDescription = null) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.DarkMode,
+                                    contentDescription = null
+                                )
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onToggleDark()
+                            },
+                            trailingIcon = {
+                                Switch(
+                                    checked = isDarkMode,
+                                    onCheckedChange = {
+                                        menuExpanded = false
+                                        onToggleDark()
+                                    }
+                                )
                             }
                         )
                         DropdownMenuItem(
                             text = { Text("Logout") },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Logout,
+                                    contentDescription = null
+                                )
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onLogout()
@@ -118,7 +135,32 @@ fun UserProfileScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 用户信息 Card
+
+            // 概览卡片：用户名 + 已完成任务数量
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Hello, $username",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Text(
+                        text = "Completed tasks: $completedCount / $totalCount",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            // 今日任务概览
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -129,20 +171,28 @@ fun UserProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Username: $username",
-                        style = MaterialTheme.typography.titleLarge
+                        text = "Today's tasks",
+                        style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "Completed Tasks: $completedCount",
-                        style = MaterialTheme.typography.bodyLarge
+                        text = "Total: ${todayTasks.size}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Completed: ${completedTodayTasks.size}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "To-do: ${todoTodayTasks.size}",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
-            
-            // 辅助功能列表
+
+            // 辅助功能：每日复盘
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { showDailyReview = true },
@@ -154,65 +204,64 @@ fun UserProfileScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
         }
-        
-        // Daily Review AlertDialog
+
         if (showDailyReview) {
             AlertDialog(
                 onDismissRequest = { showDailyReview = false },
-                title = { Text("Daily Review") },
+                title = {
+                    Text("Today's Tasks Review")
+                },
                 text = {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Completed Tasks 部分
-                        Column {
+                        Text(
+                            text = "Completed (${completedTodayTasks.size})",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        if (completedTodayTasks.isEmpty()) {
                             Text(
-                                text = "Completed Tasks",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                text = "No tasks completed today.",
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                            if (completedTodayTasks.isEmpty()) {
-                                Text(
-                                    text = "No completed tasks today",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
+                        } else {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 completedTodayTasks.forEach { task ->
                                     Text(
                                         text = "• ${task.title}",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                                        modifier = Modifier.padding(start = 8.dp)
                                     )
                                 }
                             }
                         }
-                        
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // To-do Tasks 部分
-                        Column {
+
+                        Text(
+                            text = "To-do (${todoTodayTasks.size})",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        if (todoTodayTasks.isEmpty()) {
                             Text(
-                                text = "To-do Tasks",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                text = "No remaining tasks for today.",
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                            if (todoTodayTasks.isEmpty()) {
-                                Text(
-                                    text = "No to-do tasks today",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
+                        } else {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 todoTodayTasks.forEach { task ->
                                     Text(
                                         text = "• ${task.title}",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                                        modifier = Modifier.padding(start = 8.dp)
                                     )
                                 }
                             }
@@ -243,8 +292,8 @@ fun UserProfileScreen(
 
 private fun filterTodayTasks(tasks: List<Task>): List<Task> {
     val now = ZonedDateTime.now(ZoneId.systemDefault())
-    val today = now.toLocalDate()
-    
+    val today: LocalDate = now.toLocalDate()
+
     return tasks.filter { task ->
         task.time?.let { timePoint ->
             val taskDate = if (timePoint.time != null) {
@@ -260,4 +309,3 @@ private fun filterTodayTasks(tasks: List<Task>): List<Task> {
         } ?: false
     }
 }
-
