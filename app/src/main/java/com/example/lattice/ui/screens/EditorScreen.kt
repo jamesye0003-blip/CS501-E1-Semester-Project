@@ -1,7 +1,6 @@
 package com.example.lattice.ui.screens
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -104,7 +103,6 @@ fun EditorScreen(
     val topBarTitle = if (isEditing) "Edit Task" else "New Task"
 
     val context = LocalContext.current
-    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val speechRepo = remember { SpeechToTextRepository(context) }
 
@@ -249,8 +247,8 @@ fun EditorScreen(
                                 zoneIdText,
                                 timeFormatter
                             )
+                            // ✅ 只触发保存事件，由外部决定是否导航返回
                             onSave(title, description, selectedPriority, timePoint)
-                            onBack()
                         }
                     }
                 ),
@@ -335,7 +333,7 @@ fun EditorScreen(
                 }
             }
 
-            // Scheduled time（保持你原来的逻辑）
+            // Scheduled time
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Scheduled Time", style = MaterialTheme.typography.titleMedium)
 
@@ -397,8 +395,8 @@ fun EditorScreen(
                                 zoneIdText,
                                 timeFormatter
                             )
+                            // ✅ 同样只负责发出保存事件
                             onSave(title, description, selectedPriority, timePoint)
-                            onBack()
                         }
                     },
                     enabled = title.isNotBlank(),
@@ -698,6 +696,7 @@ private fun TimeZoneSheet(
         }
     }
 }
+
 private fun startRecording(
     scope: CoroutineScope,
     speechRepo: SpeechToTextRepository,
@@ -726,6 +725,7 @@ private fun startRecording(
         }
     }
 }
+
 private fun buildTimePoint(
     dateText: String,
     timeText: String,
