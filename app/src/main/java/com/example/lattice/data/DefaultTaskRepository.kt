@@ -10,6 +10,8 @@ import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.repository.TaskRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val Context.taskDataStore by preferencesDataStore(name = "tasks")
 private val TASKS_KEY = stringPreferencesKey("tasks_payload")
@@ -74,7 +76,9 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
         }
 
     override suspend fun saveTasks(tasks: List<Task>) {
-        val raw = serialize(tasks)
-        context.taskDataStore.edit { it[TASKS_KEY] = raw }
+        withContext(Dispatchers.IO) {
+            val raw = serialize(tasks)
+            context.taskDataStore.edit { it[TASKS_KEY] = raw }
+        }
     }
 }
