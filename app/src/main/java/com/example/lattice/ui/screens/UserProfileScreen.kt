@@ -37,9 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import com.example.lattice.util.filterTodayTasks
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,7 +52,7 @@ fun UserProfileScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var showDailyReview by remember { mutableStateOf(false) }
 
-    // 过滤今天的任务
+    // 统一使用 util 中的“今天任务”过滤逻辑
     val todayTasks = remember(tasks) {
         filterTodayTasks(tasks)
     }
@@ -287,25 +285,5 @@ fun UserProfileScreen(
                 }
             )
         }
-    }
-}
-
-private fun filterTodayTasks(tasks: List<Task>): List<Task> {
-    val now = ZonedDateTime.now(ZoneId.systemDefault())
-    val today: LocalDate = now.toLocalDate()
-
-    return tasks.filter { task ->
-        task.time?.let { timePoint ->
-            val taskDate = if (timePoint.time != null) {
-                ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
-                    .withZoneSameInstant(ZoneId.systemDefault())
-                    .toLocalDate()
-            } else {
-                timePoint.date.atStartOfDay(timePoint.zoneId)
-                    .withZoneSameInstant(ZoneId.systemDefault())
-                    .toLocalDate()
-            }
-            taskDate == today
-        } ?: false
     }
 }

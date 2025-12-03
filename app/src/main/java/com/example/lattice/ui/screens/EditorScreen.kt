@@ -57,8 +57,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.example.lattice.data.SpeechResult
-import com.example.lattice.data.SpeechToTextRepository
+import com.example.lattice.domain.service.SpeechResult
+import com.example.lattice.domain.service.SpeechToTextService
+import com.example.lattice.data.speech.GoogleSpeechToTextService
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
 import kotlinx.coroutines.launch
@@ -104,7 +105,13 @@ fun EditorScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val speechRepo = remember { SpeechToTextRepository(context) }
+    val speechService: SpeechToTextService = remember {
+        // 这里直接构造 Google 的实现；
+        // 将来要切换到 Whisper / AssemblyAI，只需要改这一行即可。
+        GoogleSpeechToTextService(
+            context = context.applicationContext // TODO: 从 BuildConfig 或安全位置注入
+        )
+    }
 
     var isRecording by rememberSaveable { mutableStateOf(false) }
     var isTranscribing by rememberSaveable { mutableStateOf(false) }
@@ -117,7 +124,7 @@ fun EditorScreen(
         if (granted) {
             startRecording(
                 scope = scope,
-                speechRepo = speechRepo,
+                speechRepo = speechService,
                 onText = { text ->
                     // Title 是单行，直接替换或追加（如果已有内容则追加空格）
                     title = if (title.isBlank()) {
@@ -144,7 +151,7 @@ fun EditorScreen(
         if (granted) {
             startRecording(
                 scope = scope,
-                speechRepo = speechRepo,
+                speechRepo = speechService,
                 onText = { text ->
                     description = listOf(description, text)
                         .filter { it.isNotBlank() }
@@ -201,7 +208,7 @@ fun EditorScreen(
                             if (granted) {
                                 startRecording(
                                     scope = scope,
-                                    speechRepo = speechRepo,
+                                    speechRepo = speechService,
                                     onText = { text ->
                                         // Title 是单行，直接替换或追加（如果已有内容则追加空格）
                                         title = if (title.isBlank()) {
@@ -265,7 +272,7 @@ fun EditorScreen(
                             if (granted) {
                                 startRecording(
                                     scope = scope,
-                                    speechRepo = speechRepo,
+                                    speechRepo = speechService,
                                     onText = { text ->
                                         description = listOf(description, text)
                                             .filter { it.isNotBlank() }
@@ -699,7 +706,7 @@ private fun TimeZoneSheet(
 
 private fun startRecording(
     scope: CoroutineScope,
-    speechRepo: SpeechToTextRepository,
+    speechRepo: SpeechToTextService,
     onText: (String) -> Unit,
     onError: (String) -> Unit,
     onStateChange: (Boolean, Boolean) -> Unit

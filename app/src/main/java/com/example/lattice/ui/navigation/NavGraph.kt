@@ -26,7 +26,7 @@ fun AppNavHost(
 ) {
     // 统一在这一层收集来自 ViewModel 的 Flow
     val authState by authViewModel.uiState.collectAsState()
-    val tasks by taskViewModel.uiState.collectAsState()
+    val tasks by taskViewModel.tasks.collectAsState()
 
     // 根据认证状态确定起始路由
     val startDestination = if (authState.isAuthenticated) {
