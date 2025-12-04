@@ -52,18 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
 import com.example.lattice.ui.components.TaskNode
+import com.example.lattice.domain.time.TaskFilter
+import com.example.lattice.domain.time.filterTasksByDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.ZoneId
-import java.time.ZonedDateTime
-
-enum class TaskFilter {
-    Today,
-    Tomorrow,
-    Next7Days,
-    ThisMonth,
-    All
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +75,7 @@ fun TaskListScreen(
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
 
-    // 根据筛选条件过滤任务
+    // 根据筛选条件过滤任务（使用 util 中的统一逻辑）
     val filteredTasks = remember(tasks, selectedFilter) {
         filterTasksByDate(tasks, selectedFilter)
     }
@@ -104,6 +96,7 @@ fun TaskListScreen(
     var recentlyCompletedId by remember { mutableStateOf<String?>(null) }
     var showUndo by remember { mutableStateOf(false) }
 
+    // 如果 Undo 追踪的任务被其他逻辑改回未完成，则自动关闭 Undo
     LaunchedEffect(filteredTasks, recentlyCompletedId) {
         recentlyCompletedId?.let { id ->
             val stillDone = filteredTasks.firstOrNull { it.id == id }?.done == true
@@ -114,6 +107,7 @@ fun TaskListScreen(
         }
     }
 
+    // Undo 气泡 5 秒自动消失
     LaunchedEffect(showUndo, recentlyCompletedId) {
         if (showUndo && recentlyCompletedId != null) {
             delay(5000)
@@ -372,88 +366,5 @@ fun AppDrawerContent(
                 )
             }
         }
-    }
-}
-
-private fun filterTasksByDate(tasks: List<Task>, filter: TaskFilter): List<Task> {
-    val now = ZonedDateTime.now(ZoneId.systemDefault())
-    val today = now.toLocalDate()
-
-    return when (filter) {
-        TaskFilter.Today -> {
-            tasks.filter { task ->
-                task.time?.let { timePoint ->
-                    val taskDate = if (timePoint.time != null) {
-                        // 如果有时间，需要转换时区
-                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    } else {
-                        // 如果只有日期，需要考虑时区
-                        timePoint.date.atStartOfDay(timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    }
-                    taskDate == today
-                } ?: false // 没有时间的任务不显示在Today中
-            }
-        }
-
-        TaskFilter.Tomorrow -> {
-            val tomorrow = today.plusDays(1)
-            tasks.filter { task ->
-                task.time?.let { timePoint ->
-                    val taskDate = if (timePoint.time != null) {
-                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    } else {
-                        timePoint.date.atStartOfDay(timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    }
-                    taskDate == tomorrow
-                } ?: false
-            }
-        }
-
-        TaskFilter.Next7Days -> {
-            val endDate = today.plusDays(7)
-            tasks.filter { task ->
-                task.time?.let { timePoint ->
-                    val taskDate = if (timePoint.time != null) {
-                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    } else {
-                        timePoint.date.atStartOfDay(timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    }
-                    taskDate >= today && taskDate <= endDate
-                } ?: false
-            }
-        }
-
-        TaskFilter.ThisMonth -> {
-            val firstDayOfMonth = today.withDayOfMonth(1)
-            val lastDayOfMonth = today.withDayOfMonth(today.lengthOfMonth())
-            tasks.filter { task ->
-                task.time?.let { timePoint ->
-                    val taskDate = if (timePoint.time != null) {
-                        ZonedDateTime.of(timePoint.date, timePoint.time, timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    } else {
-                        timePoint.date.atStartOfDay(timePoint.zoneId)
-                            .withZoneSameInstant(ZoneId.systemDefault())
-                            .toLocalDate()
-                    }
-                    taskDate >= firstDayOfMonth && taskDate <= lastDayOfMonth
-                } ?: false
-            }
-        }
-
-        TaskFilter.All -> tasks
     }
 }

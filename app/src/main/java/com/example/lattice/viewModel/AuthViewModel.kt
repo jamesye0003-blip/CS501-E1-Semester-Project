@@ -3,8 +3,9 @@ package com.example.lattice.viewModel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.lattice.data.AuthRepository
+import com.example.lattice.data.DefaultAuthRepository
 import com.example.lattice.domain.model.AuthState
+import com.example.lattice.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,9 +14,10 @@ import kotlinx.coroutines.launch
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repo = AuthRepository(app)
+    // 通过 domain 层接口持有仓库，实现仍然是 data 层的 DefaultAuthRepository
+    private val repo: AuthRepository = DefaultAuthRepository(app)
 
-    private val _uiState = MutableStateFlow<AuthState>(AuthState(isLoading = true))
+    private val _uiState = MutableStateFlow(AuthState(isLoading = true))
     val uiState: StateFlow<AuthState> = _uiState.asStateFlow()
 
     init {
@@ -32,7 +34,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             repo.login(username, password)
                 .onSuccess {
-                    // 状态会通过authState Flow自动更新
+                    // 状态会通过 authState Flow 自动更新
                 }
                 .onFailure { exception ->
                     _uiState.value = _uiState.value.copy(
@@ -46,7 +48,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         viewModelScope.launch {
             repo.logout()
-            // 状态会通过authState Flow自动更新
+            // 状态会通过 authState Flow 自动更新
         }
     }
 

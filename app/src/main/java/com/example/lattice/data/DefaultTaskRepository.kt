@@ -7,17 +7,31 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
+import com.example.lattice.domain.repository.TaskRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val Context.taskDataStore by preferencesDataStore(name = "tasks")
 private val TASKS_KEY = stringPreferencesKey("tasks_payload")
 
-class TaskRepository(private val context: Context) {
+/**
+ * 使用 Preferences DataStore + 自定义字符串序列化的任务仓库默认实现。
+ * 通过实现 domain.repository.TaskRepository，使 ViewModel 依赖接口而非具体实现。
+ */
+class DefaultTaskRepository(private val context: Context) : TaskRepository {
 
     // very-simple serialization: 每行一条任务，字段用 ␞ 分隔，内部对换行/分隔符做转义
-    private fun esc(s: String) = s.replace("\\", "\\\\").replace("\n", "\\n").replace("␞", "\\u241e")
-    private fun unesc(s: String) = s.replace("\\u241e", "␞").replace("\\n", "\n").replace("\\\\", "\\")
+    private fun esc(s: String) =
+        s.replace("\\", "\\\\")
+            .replace("\n", "\\n")
+            .replace("␞", "\\u241e")
+
+    private fun unesc(s: String) =
+        s.replace("\\u241e", "␞")
+            .replace("\\n", "\n")
+            .replace("\\\\", "\\")
 
     private fun serialize(list: List<Task>): String =
         list.joinToString("\n") {
@@ -40,7 +54,8 @@ class TaskRepository(private val context: Context) {
             val rawDescription = parts.getOrNull(2) ?: ""
             val parentId = parts.getOrNull(4)?.ifBlank { null }
             val rawPriority = parts.getOrNull(5)
-            val priority = rawPriority?.let { runCatching { Priority.valueOf(it) }.getOrElse { Priority.None } }
+            val priority = rawPriority
+                ?.let { runCatching { Priority.valueOf(it) }.getOrElse { Priority.None } }
                 ?: Priority.None
             val rawTime = parts.getOrNull(6)?.let { unesc(it) }.orEmpty()
             Task(
@@ -54,14 +69,16 @@ class TaskRepository(private val context: Context) {
             )
         }
 
-    val tasksFlow: Flow<List<Task>> =
+    override val tasksFlow: Flow<List<Task>> =
         context.taskDataStore.data.map { prefs ->
             val raw = prefs[TASKS_KEY] ?: ""
             runCatching { deserialize(raw) }.getOrElse { emptyList() }
         }
 
-    suspend fun saveTasks(tasks: List<Task>) {
-        val raw = serialize(tasks)
-        context.taskDataStore.edit { it[TASKS_KEY] = raw }
+    override suspend fun saveTasks(tasks: List<Task>) {
+        withContext(Dispatchers.IO) {
+            val raw = serialize(tasks)
+            context.taskDataStore.edit { it[TASKS_KEY] = raw }
+        }
     }
 }
