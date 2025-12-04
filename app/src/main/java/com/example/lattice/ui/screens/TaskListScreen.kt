@@ -52,8 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
 import com.example.lattice.ui.components.TaskNode
-import com.example.lattice.util.TaskFilter
-import com.example.lattice.util.filterTasksByDate
+import com.example.lattice.domain.time.TaskFilter
+import com.example.lattice.domain.time.filterTasksByDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

@@ -8,7 +8,7 @@ import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.repository.TaskRepository
-import com.example.lattice.util.filterTodayTasks
+import com.example.lattice.domain.time.filterTodayTasks
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

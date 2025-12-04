@@ -37,7 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
-import com.example.lattice.util.filterTodayTasks
+import com.example.lattice.domain.time.filterTodayTasks
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

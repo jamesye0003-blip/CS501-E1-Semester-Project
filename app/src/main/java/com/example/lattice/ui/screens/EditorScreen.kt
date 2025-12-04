@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,11 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.example.lattice.domain.service.SpeechResult
-import com.example.lattice.domain.service.SpeechToTextService
-import com.example.lattice.data.speech.GoogleSpeechToTextService
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
+import com.example.lattice.viewModel.EditorViewModel
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -70,7 +70,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import kotlinx.coroutines.CoroutineScope
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,43 +103,33 @@ fun EditorScreen(
     val topBarTitle = if (isEditing) "Edit Task" else "New Task"
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val speechService: SpeechToTextService = remember {
-        // 这里直接构造 Google 的实现；
-        // 将来要切换到 Whisper / AssemblyAI，只需要改这一行即可。
-        GoogleSpeechToTextService(
-            context = context.applicationContext // TODO: 从 BuildConfig 或安全位置注入
-        )
-    }
 
-    var isRecording by rememberSaveable { mutableStateOf(false) }
-    var isTranscribing by rememberSaveable { mutableStateOf(false) }
-    var speechError by rememberSaveable { mutableStateOf<String?>(null) }
+    // ---- 语音相关：使用 EditorViewModel 管理状态 ----
+    val editorViewModel: EditorViewModel = viewModel()
+    val sttUiState by editorViewModel.uiState.collectAsState()
+
+    val isRecording = sttUiState.isRecording
+    val isTranscribing = sttUiState.isTranscribing
+    val speechError = sttUiState.error
 
     // 请求 RECORD_AUDIO 权限 - 用于 Title
     val titlePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            startRecording(
-                scope = scope,
-                speechRepo = speechService,
-                onText = { text ->
+            editorViewModel.clearError()
+            editorViewModel.startRecording(
+                onResult = { text ->
                     // Title 是单行，直接替换或追加（如果已有内容则追加空格）
                     title = if (title.isBlank()) {
                         text
                     } else {
                         "$title $text"
                     }
-                },
-                onError = { msg -> speechError = msg },
-                onStateChange = { rec, tr ->
-                    isRecording = rec
-                    isTranscribing = tr
                 }
             )
         } else {
-            speechError = "Microphone permission denied."
+            editorViewModel.setError("Microphone permission denied.")
         }
     }
 
@@ -149,22 +138,16 @@ fun EditorScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            startRecording(
-                scope = scope,
-                speechRepo = speechService,
-                onText = { text ->
+            editorViewModel.clearError()
+            editorViewModel.startRecording(
+                onResult = { text ->
                     description = listOf(description, text)
                         .filter { it.isNotBlank() }
                         .joinToString("\n")
-                },
-                onError = { msg -> speechError = msg },
-                onStateChange = { rec, tr ->
-                    isRecording = rec
-                    isTranscribing = tr
                 }
             )
         } else {
-            speechError = "Microphone permission denied."
+            editorViewModel.setError("Microphone permission denied.")
         }
     }
 
@@ -199,28 +182,21 @@ fun EditorScreen(
                     IconButton(
                         enabled = !isRecording && !isTranscribing,
                         onClick = {
-                            speechError = null
+                            editorViewModel.clearError()
                             val granted =
                                 ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.RECORD_AUDIO
                                 ) == PackageManager.PERMISSION_GRANTED
                             if (granted) {
-                                startRecording(
-                                    scope = scope,
-                                    speechRepo = speechService,
-                                    onText = { text ->
+                                editorViewModel.startRecording(
+                                    onResult = { text ->
                                         // Title 是单行，直接替换或追加（如果已有内容则追加空格）
                                         title = if (title.isBlank()) {
                                             text
                                         } else {
                                             "$title $text"
                                         }
-                                    },
-                                    onError = { msg -> speechError = msg },
-                                    onStateChange = { rec, tr ->
-                                        isRecording = rec
-                                        isTranscribing = tr
                                     }
                                 )
                             } else {
@@ -263,25 +239,18 @@ fun EditorScreen(
                     IconButton(
                         enabled = !isRecording && !isTranscribing,
                         onClick = {
-                            speechError = null
+                            editorViewModel.clearError()
                             val granted =
                                 ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.RECORD_AUDIO
                                 ) == PackageManager.PERMISSION_GRANTED
                             if (granted) {
-                                startRecording(
-                                    scope = scope,
-                                    speechRepo = speechService,
-                                    onText = { text ->
+                                editorViewModel.startRecording(
+                                    onResult = { text ->
                                         description = listOf(description, text)
                                             .filter { it.isNotBlank() }
                                             .joinToString("\n")
-                                    },
-                                    onError = { msg -> speechError = msg },
-                                    onStateChange = { rec, tr ->
-                                        isRecording = rec
-                                        isTranscribing = tr
                                     }
                                 )
                             } else {
@@ -313,7 +282,7 @@ fun EditorScreen(
 
             if (speechError != null) {
                 Text(
-                    text = speechError!!,
+                    text = speechError,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -439,7 +408,7 @@ fun EditorScreen(
     }
 }
 
-// ----------------- 以下辅助组件与之前版本一致，只是放在同一文件 -----------------
+// ----------------- 以下辅助组件与之前版本一致，只是略微清理 import -----------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -699,35 +668,6 @@ private fun TimeZoneSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Done")
-            }
-        }
-    }
-}
-
-private fun startRecording(
-    scope: CoroutineScope,
-    speechRepo: SpeechToTextService,
-    onText: (String) -> Unit,
-    onError: (String) -> Unit,
-    onStateChange: (Boolean, Boolean) -> Unit
-) {
-    scope.launch {
-        // 正在录音
-        onStateChange(true, false)
-
-        val result = speechRepo.recordAndTranscribe(
-            seconds = 5,
-            languageCode = "en-US"   // 需要中文可以改成 "zh-CN"
-        )
-
-        when (result) {
-            is SpeechResult.Success -> {
-                onStateChange(false, false)
-                onText(result.text)
-            }
-            is SpeechResult.Error -> {
-                onStateChange(false, false)
-                onError(result.message)
             }
         }
     }
