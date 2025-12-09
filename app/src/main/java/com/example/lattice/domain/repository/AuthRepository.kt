@@ -6,17 +6,20 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * 领域层认证仓库契约。
- * UI / ViewModel 只依赖这个接口，而不关心具体是 DataStore、网络还是别的实现。
+ * Domain contract for authentication repository. UI/ViewModel depends on interface only.
  */
 interface AuthRepository {
 
-    /** 持续推送当前认证状态（已登录/未登录 + 用户信息等） */
+    /** Emits current auth state (logged-in/out + user info). */
     val authState: Flow<AuthState>
 
-    /** 尝试登录，成功返回 User，失败返回 Result.failure。 */
+    /** Register new user and sign in immediately. */
+    suspend fun register(username: String, password: String): Result<User>
+
+    /** Login with username/password; success returns User, failure returns Result.failure. */
     suspend fun login(username: String, password: String): Result<User>
 
-    /** 注销登录并清空本地凭证。 */
+    /** Logout and clear local credentials. */
     suspend fun logout()
 }
 

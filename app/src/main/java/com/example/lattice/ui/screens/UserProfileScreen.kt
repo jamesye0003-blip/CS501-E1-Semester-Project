@@ -52,7 +52,6 @@ fun UserProfileScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var showDailyReview by remember { mutableStateOf(false) }
 
-    // 统一使用 util 中的“今天任务”过滤逻辑
     val todayTasks = remember(tasks) {
         filterTodayTasks(tasks)
     }
@@ -134,7 +133,7 @@ fun UserProfileScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // 概览卡片：用户名 + 已完成任务数量
+            // Overview card: Username + Number of completed tasks
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.elevatedCardColors(
@@ -158,7 +157,7 @@ fun UserProfileScreen(
                 }
             }
 
-            // 今日任务概览
+            // Today's Task Overview
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -190,7 +189,7 @@ fun UserProfileScreen(
                 }
             }
 
-            // 辅助功能：每日复盘
+            // Auxiliary Function: Daily Review
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { showDailyReview = true },

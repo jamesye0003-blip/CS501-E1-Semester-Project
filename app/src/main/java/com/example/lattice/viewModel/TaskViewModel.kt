@@ -7,8 +7,11 @@ import com.example.lattice.data.DefaultTaskRepository
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
+import com.example.lattice.domain.model.toTaskTimeFields
 import com.example.lattice.domain.repository.TaskRepository
 import com.example.lattice.domain.time.filterTodayTasks
+import com.example.lattice.domain.time.TimeConverter
+import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +20,6 @@ import kotlinx.coroutines.launch
 
 class TaskViewModel(app: Application) : AndroidViewModel(app) {
 
-    // 依赖 domain 层接口，默认实现为 data 层的 DefaultTaskRepository
     private val repo: TaskRepository = DefaultTaskRepository(app)
 
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
@@ -29,7 +31,7 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<List<Task>> get() = tasks
 
     init {
-        // 订阅 DataStore（后续可以换成 Room），热更新 UI
+        // 订阅 Room 数据库，热更新 UI
         viewModelScope.launch {
             repo.tasksFlow.collectLatest { _tasks.value = it }
         }
@@ -48,11 +50,14 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         time: TimePoint? = null,
         parentId: String? = null
     ) {
+        val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
         _tasks.value = _tasks.value + Task(
             title = title,
             description = description,
             priority = priority,
-            time = time,
+            dueAt = dueAt,
+            hasSpecificTime = hasSpecificTime,
+            sourceTimeZoneId = sourceTimeZoneId,
             parentId = parentId
         )
         saveNow()
@@ -74,13 +79,16 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         priority: Priority,
         time: TimePoint?
     ) {
+        val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
         _tasks.value = _tasks.value.map {
             if (it.id == id) {
                 it.copy(
                     title = title,
                     description = description,
                     priority = priority,
-                    time = time
+                    dueAt = dueAt,
+                    hasSpecificTime = hasSpecificTime,
+                    sourceTimeZoneId = sourceTimeZoneId
                 )
             } else {
                 it
@@ -108,14 +116,18 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun postponeTodayTasks() {
-        // 使用 TimePointUtils 中的统一“今天任务”逻辑
+        // 使用 TimePointUtils 中的统一"今天任务"逻辑
         val todayTasks = filterTodayTasks(_tasks.value)
         val todayIds = todayTasks.map { it.id }.toSet()
+        val systemZone = ZoneId.systemDefault()
 
         _tasks.value = _tasks.value.map { task ->
-            if (!task.done && task.id in todayIds && task.time != null) {
-                val newDate = task.time.date.plusDays(1)
-                task.copy(time = task.time.copy(date = newDate))
+            if (!task.done && task.id in todayIds && task.dueAt != null) {
+                // 将UTC时刻转换为系统时区，加一天，再转回UTC
+                val zonedDateTime = TimeConverter.toZonedDateTime(task.dueAt, systemZone)
+                val newZonedDateTime = zonedDateTime.plusDays(1)
+                val newDueAt = newZonedDateTime.toInstant()
+                task.copy(dueAt = newDueAt)
             } else {
                 task
             }

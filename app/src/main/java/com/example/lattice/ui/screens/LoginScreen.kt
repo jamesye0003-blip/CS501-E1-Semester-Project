@@ -15,6 +15,7 @@ import com.example.lattice.viewModel.AuthViewModel
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    onNavigateRegister: () -> Unit,
     viewModel: AuthViewModel = viewModel()
 ) {
     var username by remember { mutableStateOf("") }
@@ -22,7 +23,7 @@ fun LoginScreen(
     
     val uiState by viewModel.uiState.collectAsState()
 
-    // 监听登录成功
+    // Listen whether login succeeds
     LaunchedEffect(uiState.isAuthenticated) {
         if (uiState.isAuthenticated) {
             onLoginSuccess()
@@ -118,12 +119,15 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Info text
-            Text(
-                text = "For demo: Any non-empty username and password will work",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
+            Button(
+                onClick = onNavigateRegister,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                enabled = !uiState.isLoading
+            ) {
+                Text("Register a new account")
+            }
         }
     }
 }
