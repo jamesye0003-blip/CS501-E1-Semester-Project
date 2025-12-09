@@ -22,6 +22,7 @@ import retrofit2.http.Query
 
 /**
  * Google Cloud Speech-to-Text 的 Retrofit API 定义。
+ * Retrofit API definition for Google Cloud Speech-to-Text.
  */
 private interface GoogleSpeechApi {
 
@@ -34,6 +35,7 @@ private interface GoogleSpeechApi {
 
 /**
  * Google STT 请求 / 响应数据模型。
+ * Request/response models for Google STT.
  */
 private data class GoogleRecognitionRequest(
     val config: GoogleRecognitionConfig,
@@ -69,6 +71,12 @@ private data class GoogleSpeechAlternative(
  * - 负责录音（AudioRecord）
  * - 负责调用 Google STT 接口
  * - 返回领域层的 SpeechResult
+ *
+ * Speech-to-text implementation using Google Cloud.
+ *
+ * - records audio
+ * - calls Google STT API
+ * - returns SpeechResult
  */
 class GoogleSpeechToTextService(
     private val context: Context,
@@ -153,8 +161,7 @@ class GoogleSpeechToTextService(
     }
 
     /**
-     * 是否已经获得麦克风权限。
-     * 请求权限仍应由 UI 层负责。
+     * Check microphone permission (UI layer should request if missing).
      */
     private fun hasRecordPermission(): Boolean =
         ContextCompat.checkSelfPermission(
@@ -163,7 +170,7 @@ class GoogleSpeechToTextService(
         ) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * 使用 AudioRecord 录制原始 PCM 数据。
+     * Record raw PCM via AudioRecord.
      */
     private fun recordPcm(seconds: Int): ByteArray {
         val totalBytes = seconds * sampleRate * 2 // 16-bit, mono → 2 bytes per sample
@@ -200,7 +207,7 @@ class GoogleSpeechToTextService(
             audioRecord.release()
         }
 
-        // 如果实际录得比预期少，裁剪掉尾部空字节
+        // Trim tail if fewer bytes than expected
         return if (offset == totalBytes) output else output.copyOf(offset)
     }
 
@@ -210,7 +217,7 @@ class GoogleSpeechToTextService(
 
         /**
          * 临时用于测试的 API Key。
-         * TODO: 测试完后请改为从安全位置（如 BuildConfig / Encrypted prefs）注入。
+         * Temporary API key for testing; inject from secure source later.
          */
         const val API_KEY: String = "AIzaSyBpPtFfa9jYX5fdY6L4S0Wvj3dgt2VQimI"
     }

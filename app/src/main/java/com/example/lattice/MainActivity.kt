@@ -80,7 +80,7 @@ fun MainRoot(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // 登录页不显示底部导航
+    // LoginScreen will not show the bottom navigation bar.
     val showBottomBar = currentRoute != Route.Login.route
 
     Scaffold(

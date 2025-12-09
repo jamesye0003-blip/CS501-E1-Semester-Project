@@ -14,14 +14,13 @@ import kotlinx.coroutines.launch
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
 
-    // 通过 domain 层接口持有仓库，实现仍然是 data 层的 DefaultAuthRepository
     private val repo: AuthRepository = DefaultAuthRepository(app)
 
     private val _uiState = MutableStateFlow(AuthState(isLoading = true))
     val uiState: StateFlow<AuthState> = _uiState.asStateFlow()
 
     init {
-        // 订阅认证状态
+        // Subscript auth state
         viewModelScope.launch {
             repo.authState.collectLatest { state ->
                 _uiState.value = state.copy(isLoading = false)
@@ -34,7 +33,7 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             repo.login(username, password)
                 .onSuccess {
-                    // 状态会通过 authState Flow 自动更新
+                    // The status will be automatically updated through the authState Flow.
                 }
                 .onFailure { exception ->
                     _uiState.value = _uiState.value.copy(
@@ -47,8 +46,23 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logout() {
         viewModelScope.launch {
-            repo.logout()
-            // 状态会通过 authState Flow 自动更新
+            repo.logout()  // The status will be automatically updated through the authState Flow.
+        }
+    }
+
+    fun register(username: String, password: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            repo.register(username, password)
+                .onSuccess {
+                    // The status will be automatically updated through the authState Flow.
+                }
+                .onFailure { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = exception.message ?: "Register failed"
+                    )
+                }
         }
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -61,15 +62,19 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
+import com.example.lattice.domain.time.TimeZoneData
+import com.example.lattice.domain.time.TimeZoneOption
 import com.example.lattice.viewModel.EditorViewModel
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -313,9 +318,19 @@ fun EditorScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Scheduled Time", style = MaterialTheme.typography.titleMedium)
 
-                val zoneDisplay = runCatching { ZoneId.of(zoneIdText) }
+                val selectedZone = runCatching { ZoneId.of(zoneIdText) }
                     .getOrDefault(ZoneId.systemDefault())
-                    .getDisplayName(TextStyle.SHORT, Locale.getDefault())
+                
+                val cityName = TimeZoneData.findCityByZoneId(selectedZone) ?: selectedZone.id
+                val now = ZonedDateTime.now(selectedZone)
+                val offset = now.offset
+                val hours = offset.totalSeconds / 3600
+                val minutes = kotlin.math.abs(offset.totalSeconds % 3600) / 60
+                val offsetStr = when {
+                    minutes == 0 -> "UTC${if (hours >= 0) "+" else ""}$hours"
+                    else -> "UTC${if (hours >= 0) "+" else ""}$hours:${minutes.toString().padStart(2, '0')}"
+                }
+                val zoneDisplay = "$cityName, $offsetStr"
 
                 val combinedText = when {
                     dateText.isBlank() -> "Not set"
@@ -433,23 +448,19 @@ private fun ScheduleBottomSheet(
         is24Hour = false
     )
 
-    var zoneQuery by rememberSaveable { mutableStateOf("") }
     var selectedZoneId by rememberSaveable(initialZoneId.id) {
         mutableStateOf(initialZoneId.id)
-    }
-
-    val allZones = remember { ZoneId.getAvailableZoneIds().sorted() }
-    val filteredZones = remember(zoneQuery, allZones) {
-        val q = zoneQuery.trim()
-        if (q.isBlank()) allZones else allZones.filter {
-            it.contains(q, ignoreCase = true)
-        }
     }
 
     val contentScroll = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    var showTimeSheet by remember { mutableStateOf(false) }
+    
+    // Time zone data
+    val allTimeZones = remember { TimeZoneData.getAllTimeZones() }
+    val selectedZone = remember(selectedZoneId) {
+        runCatching { ZoneId.of(selectedZoneId) }.getOrElse { systemZone }
+    }
 
     LaunchedEffect(Unit) {
         if (!sheetState.isVisible) sheetState.show()
@@ -484,32 +495,75 @@ private fun ScheduleBottomSheet(
                 Text("Include time", style = MaterialTheme.typography.titleMedium)
                 Switch(
                     checked = includeTime,
-                    onCheckedChange = {
-                        includeTime = it
-                        if (!it) showTimeSheet = false
-                    }
+                    onCheckedChange = { includeTime = it }
                 )
             }
 
             if (includeTime) {
-                val selectedZone = runCatching { ZoneId.of(selectedZoneId) }
-                    .getOrElse { systemZone }
-                val currentTime = LocalTime.of(timeState.hour, timeState.minute)
-                val timeDisplay = currentTime.format(
-                    DateTimeFormatter.ofPattern(
-                        "h:mm a",
-                        Locale.getDefault()
-                    )
-                )
+                // Time Picker Section
                 Text(
-                    text = "Time: $timeDisplay (${selectedZone.getDisplayName(TextStyle.SHORT, Locale.getDefault())})",
-                    style = MaterialTheme.typography.bodyMedium
+                    "Time",
+                    style = MaterialTheme.typography.titleMedium
                 )
-                Button(
-                    onClick = { showTimeSheet = true },
-                    modifier = Modifier.fillMaxWidth()
+                TimePicker(state = timeState)
+                
+                // Divider
+                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Time Zone Selection Section
+                Text(
+                    "Time Zone",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                
+                // Find city name for display
+                val cityName = TimeZoneData.findCityByZoneId(selectedZone) ?: selectedZone.id
+                val now = ZonedDateTime.now(selectedZone)
+                val offset = now.offset
+                val hours = offset.totalSeconds / 3600
+                val minutes = kotlin.math.abs(offset.totalSeconds % 3600) / 60
+                val offsetStr = when {
+                    minutes == 0 -> "UTC${if (hours >= 0) "+" else ""}$hours"
+                    else -> "UTC${if (hours >= 0) "+" else ""}$hours:${minutes.toString().padStart(2, '0')}"
+                }
+                
+                Text(
+                    text = "Selected: $cityName, $offsetStr",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                // Time Zone List
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text("Set time & time zone")
+                    allTimeZones.forEach { timeZoneOption ->
+                        val isSelected = timeZoneOption.zoneId == selectedZone
+                        
+                        TextButton(
+                            onClick = {
+                                selectedZoneId = timeZoneOption.zoneId.id
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = timeZoneOption.displayText,
+                                style = if (isSelected) {
+                                    MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    MaterialTheme.typography.bodyMedium
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -557,121 +611,8 @@ private fun ScheduleBottomSheet(
         }
     }
 
-    if (includeTime && showTimeSheet) {
-        TimeZoneSheet(
-            timeState = timeState,
-            zoneQuery = zoneQuery,
-            onZoneQueryChange = { zoneQuery = it },
-            filteredZones = filteredZones,
-            selectedZoneId = selectedZoneId,
-            onZoneSelected = { zoneId ->
-                selectedZoneId = zoneId
-                zoneQuery = zoneId
-            },
-            onDismiss = { showTimeSheet = false }
-        )
-    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TimeZoneSheet(
-    timeState: androidx.compose.material3.TimePickerState,
-    zoneQuery: String,
-    onZoneQueryChange: (String) -> Unit,
-    filteredZones: List<String>,
-    selectedZoneId: String,
-    onZoneSelected: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val zoneListScroll = rememberScrollState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) { sheetState.show() }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text("Set Time & Time Zone", style = MaterialTheme.typography.titleLarge)
-
-            TimePicker(state = timeState)
-
-            OutlinedTextField(
-                value = zoneQuery,
-                onValueChange = onZoneQueryChange,
-                label = { Text("Search time zone") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 240.dp)
-                    .verticalScroll(zoneListScroll),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                filteredZones.forEach { zoneId ->
-                    val display = runCatching { ZoneId.of(zoneId) }.getOrNull()
-                    val shorthand =
-                        display?.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-                    val label =
-                        if (shorthand.isNullOrBlank()) zoneId else "$zoneId ($shorthand)"
-
-                    TextButton(
-                        onClick = {
-                            onZoneSelected(zoneId)
-                            scope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = label,
-                            style =
-                                if (zoneId == selectedZoneId)
-                                    MaterialTheme.typography.bodyLarge
-                                else
-                                    MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-
-                if (filteredZones.isEmpty()) {
-                    Text(
-                        "No time zones found",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        sheetState.hide()
-                        onDismiss()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Done")
-            }
-        }
-    }
-}
 
 private fun buildTimePoint(
     dateText: String,

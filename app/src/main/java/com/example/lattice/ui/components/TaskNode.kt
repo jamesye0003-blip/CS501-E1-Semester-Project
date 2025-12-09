@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
+import com.example.lattice.domain.model.toTimePoint
+import com.example.lattice.domain.time.TimeConverter
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -81,7 +83,9 @@ fun TaskNode(
                     if (!hideDescription && task.description.isNotBlank()) {
                         Text(task.description, style = MaterialTheme.typography.bodySmall, color = secondaryColor)
                     }
-                    val timeText = remember(task.time) { task.time?.let { formatTimePointForList(it) } }
+                    val timeText = remember(task.dueAt, task.hasSpecificTime, task.sourceTimeZoneId) { 
+                        task.toTimePoint()?.let { formatTimePointForList(it) } 
+                    }
                     if (!timeText.isNullOrBlank()) {
                         Text(
                             text = timeText,

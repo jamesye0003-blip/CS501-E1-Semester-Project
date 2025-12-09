@@ -75,7 +75,6 @@ fun TaskListScreen(
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
 
-    // 根据筛选条件过滤任务（使用 util 中的统一逻辑）
     val filteredTasks = remember(tasks, selectedFilter) {
         filterTasksByDate(tasks, selectedFilter)
     }
@@ -107,7 +106,7 @@ fun TaskListScreen(
         }
     }
 
-    // Undo 气泡 5 秒自动消失
+    // The "Undo" bubble will automatically disappear after 5 seconds.
     LaunchedEffect(showUndo, recentlyCompletedId) {
         if (showUndo && recentlyCompletedId != null) {
             delay(5000)

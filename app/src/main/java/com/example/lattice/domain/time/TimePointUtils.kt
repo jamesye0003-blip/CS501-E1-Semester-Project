@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * 统一管理 Task / TimePoint 相关的“纯时间逻辑”：
+ * 统一管理 Task / TimePoint 相关的"纯时间逻辑"：
  *
  * - 不依赖 UI（Compose、Material3 等）
  * - 只依赖 domain model（Task、TimePoint）
@@ -22,7 +22,7 @@ private val LOCAL_TIME_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
 
 /**
- * 将一个 TimePoint 转换为“系统默认时区”的 LocalDate。
+ * 将一个 TimePoint 转换为"系统默认时区"的 LocalDate。
  *
  * - 如果包含具体时间，则先构造 ZonedDateTime 再换算时区；
  * - 如果只有日期，则从该时区的当日 00:00 开始换算；
@@ -40,10 +40,12 @@ fun TimePoint.toSystemLocalDate(systemZone: ZoneId = ZoneId.systemDefault()): Lo
 }
 
 /**
- * 便捷扩展：从 Task 上直接拿“在系统时区下的日期”（若没有时间则返回 null）。
+ * 便捷扩展：从 Task 上直接拿"在系统时区下的日期"（若没有时间则返回 null）。
+ * 
+ * 使用新的dueAt字段，转换为系统时区的日期。
  */
 fun Task.timeAsSystemLocalDate(systemZone: ZoneId = ZoneId.systemDefault()): LocalDate? =
-    time?.toSystemLocalDate(systemZone)
+    dueAt?.let { TimeConverter.toLocalDate(it, systemZone) }
 
 /**
  * 用于 UI 展示列表时的统一时间字符串，比如右侧的小时间（不含日期）。
@@ -63,6 +65,24 @@ fun TimePoint?.formatTimeForList(
         // 只有日期时一般不显示时间；你也可以改成 00:00 等特殊策略
         return null
     }
+    return formatter.format(localTime)
+}
+
+/**
+ * 从Task的dueAt字段格式化时间字符串（用于UI展示）。
+ * 
+ * @param systemZone 系统当前时区
+ * @param formatter 时间格式化器
+ * @return 格式化的时间字符串，如果没有具体时间则返回null
+ */
+fun Task.formatTimeForList(
+    systemZone: ZoneId = ZoneId.systemDefault(),
+    formatter: DateTimeFormatter = LOCAL_TIME_FORMATTER
+): String? {
+    val instant = dueAt ?: return null
+    if (!hasSpecificTime) return null
+    
+    val localTime = TimeConverter.toLocalTime(instant, systemZone)
     return formatter.format(localTime)
 }
 

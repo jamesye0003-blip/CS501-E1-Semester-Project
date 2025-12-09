@@ -12,7 +12,9 @@ import com.example.lattice.ui.screens.EditorScreen
 import com.example.lattice.ui.screens.LoginScreen
 import com.example.lattice.ui.screens.TaskListScreen
 import com.example.lattice.ui.screens.UserProfileScreen
+import com.example.lattice.ui.screens.RegisterScreen
 import com.example.lattice.domain.model.Priority
+import com.example.lattice.domain.model.toTimePoint
 import com.example.lattice.viewModel.AuthViewModel
 import com.example.lattice.viewModel.TaskViewModel
 
@@ -24,11 +26,11 @@ fun AppNavHost(
     isDarkMode: Boolean,
     onToggleDark: () -> Unit
 ) {
-    // 统一在这一层收集来自 ViewModel 的 Flow
+    // Collect flows once at this layer
     val authState by authViewModel.uiState.collectAsState()
     val tasks by taskViewModel.tasks.collectAsState()
 
-    // 根据认证状态确定起始路由
+    // Pick start destination by auth state
     val startDestination = if (authState.isAuthenticated) {
         Route.Main.route
     } else {
@@ -47,6 +49,20 @@ fun AppNavHost(
                         popUpTo(Route.Login.route) { inclusive = true }
                     }
                 },
+                onNavigateRegister = { navController.navigate(Route.Register.route) },
+                viewModel = authViewModel
+            )
+        }
+
+        // Register screen
+        composable(Route.Register.route) {
+            RegisterScreen(
+                onRegisterSuccess = {
+                    navController.navigate(Route.Main.route) {
+                        popUpTo(Route.Login.route) { inclusive = true }
+                    }
+                },
+                onBackToLogin = { navController.popBackStack() },
                 viewModel = authViewModel
             )
         }
@@ -75,14 +91,14 @@ fun AppNavHost(
                     ?.getString("editId")
                     ?.ifBlank { null }
 
-                // 如果是编辑，从当前 tasks 中找到要编辑的任务做预填
+                // Preload task when editing
                 val editing = tasks.firstOrNull { it.id == editId }
 
                 EditorScreen(
                     initialTitle = editing?.title ?: "",
                     initialDescription = editing?.description ?: "",
                     initialPriority = editing?.priority ?: Priority.None,
-                    initialTime = editing?.time,
+                    initialTime = editing?.toTimePoint(),
                     primaryLabel = if (editing != null) "Update" else "Save",
                     onBack = { navController.popBackStack() },
                     onSave = { title, description, priority, time ->
@@ -126,7 +142,7 @@ fun AppNavHost(
         }
     }
 
-    // 认证状态变为未登录时，强制返回 Login
+    // Force nav to login when unauthenticated
     LaunchedEffect(authState.isAuthenticated) {
         if (!authState.isAuthenticated &&
             navController.currentDestination?.route != Route.Login.route

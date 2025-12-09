@@ -3,77 +3,133 @@ package com.example.lattice.data
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.example.lattice.data.local.datastore.authDataStore
+import com.example.lattice.data.local.room.db.AppDatabase
+import com.example.lattice.data.local.room.entity.UserEntity
 import com.example.lattice.domain.model.AuthState
 import com.example.lattice.domain.model.User
 import com.example.lattice.domain.repository.AuthRepository
+import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
-
-private val Context.authDataStore by preferencesDataStore(name = "auth")
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 private val USER_ID_KEY = stringPreferencesKey("user_id")
-private val USERNAME_KEY = stringPreferencesKey("username")
-private val EMAIL_KEY = stringPreferencesKey("email")
-private val TOKEN_KEY = stringPreferencesKey("token")
 
 /**
- * DataStore 上的默认认证仓库实现。
- * 通过实现 domain.repository.AuthRepository，使 ViewModel 只依赖接口。
+ * 使用 Room + DataStore 的本地多账号认证仓库实现。
+ * - Room 保存用户账号和密码哈希
+ *
+ * Local multi-account auth repository using Room + DataStore.
+ *   Room stores user accounts and password hashes.
+ *   DataStore keeps only current_user_id.
  */
 class DefaultAuthRepository(private val context: Context) : AuthRepository {
 
-    override val authState: Flow<AuthState> = context.authDataStore.data.map { prefs ->
-        val userId = prefs[USER_ID_KEY]
-        val username = prefs[USERNAME_KEY]
-        val token = prefs[TOKEN_KEY]
+    private val database = AppDatabase.getDatabase(context)
+    private val userDao = database.userDao()
 
-        if (token != null && userId != null && username != null) {
-            AuthState(
-                isAuthenticated = true,
-                user = User(
-                    id = userId,
-                    username = username,
-                    email = prefs[EMAIL_KEY]
+    override val authState: Flow<AuthState> =
+        context.authDataStore.data.flatMapLatest { prefs ->
+            val userId = prefs[USER_ID_KEY]
+            if (userId.isNullOrBlank()) {
+                flowOf(AuthState(isAuthenticated = false))
+            } else {
+                userDao.observeUserById(userId).map { entity ->
+                    if (entity != null && !entity.isDeleted) {
+                        AuthState(
+                            isAuthenticated = true,
+                            user = User(
+                                id = entity.id,
+                                username = entity.username,
+                                email = entity.email
+                            )
+                        )
+                    } else {
+                        AuthState(isAuthenticated = false)
+                    }
+                }
+            }
+        }
+
+    override suspend fun register(username: String, password: String): Result<User> =
+        withContext(Dispatchers.IO) {
+            if (username.isBlank() || password.isBlank()) {
+                return@withContext Result.failure(Exception("Username and password must not be empty"))
+            }
+
+            val existing = userDao.getUserByUsername(username)
+            if (existing != null) {
+                return@withContext Result.failure(Exception("Username already exists"))
+            }
+
+            val now = System.currentTimeMillis()
+            val userId = UUID.randomUUID().toString()
+            val userEntity = UserEntity(
+                id = userId,
+                username = username,
+                passwordHash = hashPassword(password),
+                email = null,
+                createdAt = now,
+                updatedAt = now
+            )
+            userDao.insertUser(userEntity)
+            context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = userId }
+
+            Result.success(
+                User(
+                    id = userEntity.id,
+                    username = userEntity.username,
+                    email = userEntity.email
                 )
             )
-        } else {
-            AuthState(isAuthenticated = false)
         }
-    }
 
-    override suspend fun login(username: String, password: String): Result<User> {
-        return try {
-            // 简单的本地验证（实际项目中应该调用 API）
-            if (username.isNotBlank() && password.isNotBlank()) {
-                val user = User(
-                    id = "user_${System.currentTimeMillis()}",
-                    username = username,
-                    email = null
-                )
-
-                // 保存认证信息
-                context.authDataStore.edit { prefs ->
-                    prefs[USER_ID_KEY] = user.id
-                    prefs[USERNAME_KEY] = user.username
-                    prefs[TOKEN_KEY] = "token_${user.id}"
-                    user.email?.let { prefs[EMAIL_KEY] = it }
-                }
-
-                Result.success(user)
-            } else {
-                Result.failure(Exception("Username and password are required"))
+    override suspend fun login(username: String, password: String): Result<User> =
+        withContext(Dispatchers.IO) {
+            if (username.isBlank() || password.isBlank()) {
+                return@withContext Result.failure(Exception("Username and password must not be empty"))
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+
+            val user = userDao.getUserByUsername(username)
+                ?: return@withContext Result.failure(Exception("User not found"))
+
+            if (user.isDeleted) {
+                return@withContext Result.failure(Exception("User is deleted"))
+            }
+
+            if (!verifyPassword(password, user.passwordHash)) {
+                return@withContext Result.failure(Exception("Invalid password"))
+            }
+
+            context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = user.id }
+
+            Result.success(
+                User(
+                    id = user.id,
+                    username = user.username,
+                    email = user.email
+                )
+            )
         }
-    }
 
     override suspend fun logout() {
         context.authDataStore.edit { prefs ->
             prefs.remove(USER_ID_KEY)
-            prefs.remove(USERNAME_KEY)
-            prefs.remove(EMAIL_KEY)
-            prefs.remove(TOKEN_KEY)
         }
     }
 }
+
+// ---- Simple password hash helpers ----
+private fun hashPassword(plain: String): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val bytes = md.digest(plain.toByteArray())
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
+private fun verifyPassword(plain: String, hash: String): Boolean =
+    hashPassword(plain) == hash
+
