@@ -8,11 +8,12 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
+import com.example.lattice.ui.screens.CalendarScreen
 import com.example.lattice.ui.screens.EditorScreen
 import com.example.lattice.ui.screens.LoginScreen
+import com.example.lattice.ui.screens.RegisterScreen
 import com.example.lattice.ui.screens.TaskListScreen
 import com.example.lattice.ui.screens.UserProfileScreen
-import com.example.lattice.ui.screens.RegisterScreen
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.toTimePoint
 import com.example.lattice.viewModel.AuthViewModel
@@ -80,6 +81,15 @@ fun AppNavHost(
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
                     onEdit = { id -> navController.navigate(buildEditorRoute(editId = id)) },
                     onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
+                )
+            }
+
+            // NEW: Calendar screen
+            composable(Route.Calendar.route) {
+                CalendarScreen(
+                    tasks = tasks,
+                    onEdit = { id -> navController.navigate(buildEditorRoute(editId = id)) },
+                    onAddTask = { navController.navigate(buildEditorRoute(null)) }
                 )
             }
 

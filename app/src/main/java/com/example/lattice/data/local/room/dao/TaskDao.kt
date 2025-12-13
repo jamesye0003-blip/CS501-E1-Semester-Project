@@ -18,7 +18,7 @@ interface TaskDao {
     // CREATE functions
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity)
-    
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTasks(tasks: List<TaskEntity>)
 
@@ -33,10 +33,10 @@ interface TaskDao {
         """
     )
     fun getAllTasksFlow(): Flow<List<TaskEntity>>
-    
+
     @Query("SELECT * FROM tasks WHERE id = :id")
     suspend fun getTaskById(id: String): TaskEntity?
-    
+
     @Query(
         """
         SELECT * FROM tasks 
@@ -60,24 +60,32 @@ interface TaskDao {
         """
     )
     fun getTasksByUserId(userId: String): Flow<List<TaskEntity>>
-    
+
     // UPDATE functions
     @Update
     suspend fun updateTask(task: TaskEntity)
-    
+
     // DELETE functions
     @Delete
     suspend fun deleteTask(task: TaskEntity)
-    
+
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteTaskById(id: String)
-    
+
+    /**
+     * NEW: batch delete by ids.
+     * 用于级联删除时一次性删除所有子孙任务，避免逐条 DELETE。
+     */
+    @Query("DELETE FROM tasks WHERE id IN (:ids)")
+    suspend fun deleteTasksByIds(ids: List<String>)
+
     @Query("DELETE FROM tasks WHERE parentId = :parentId")
     suspend fun deleteTasksByParentId(parentId: String)
-    
+
     @Query("DELETE FROM tasks")
     suspend fun deleteAllTasks()
 }
+
 
 
 

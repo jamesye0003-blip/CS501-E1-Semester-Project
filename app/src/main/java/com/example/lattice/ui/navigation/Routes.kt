@@ -4,7 +4,10 @@ sealed class Route(val route: String) {
     data object Login : Route("login")
     data object Register : Route("register")
     data object Main : Route("main")
+
+    // Main graph destinations
     data object Home : Route("home")
+    data object Calendar : Route("calendar")
     data object Profile : Route("profile")
 
     companion object {
