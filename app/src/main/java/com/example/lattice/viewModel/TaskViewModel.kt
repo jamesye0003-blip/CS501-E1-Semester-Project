@@ -9,8 +9,8 @@ import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.model.toTaskTimeFields
 import com.example.lattice.domain.repository.TaskRepository
-import com.example.lattice.domain.time.filterTodayTasks
 import com.example.lattice.domain.time.TimeConverter
+import com.example.lattice.domain.time.filterTodayTasks
 import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,20 +18,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-class TaskViewModel(app: Application) : AndroidViewModel(app) {
+/**
+ * Task related state & actions.
+ */
+class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repo: TaskRepository = DefaultTaskRepository(app)
+    private val repo: TaskRepository = DefaultTaskRepository(application.applicationContext)
 
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
-
-    /** 推荐使用的新名字 */
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
 
-    /** 为了兼容旧代码，保留一个 uiState 的别名 */
-    val uiState: StateFlow<List<Task>> get() = tasks
-
     init {
-        // 订阅 Room 数据库，热更新 UI
         viewModelScope.launch {
             repo.tasksFlow.collectLatest { _tasks.value = it }
         }
@@ -51,6 +48,7 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         parentId: String? = null
     ) {
         val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
+
         _tasks.value = _tasks.value + Task(
             title = title,
             description = description,
@@ -64,11 +62,12 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleDone(id: String) {
-        _tasks.value = _tasks.value.map { if (it.id == id) it.copy(done = !it.done) else it }
+        _tasks.value = _tasks.value.map { task ->
+            if (task.id == id) task.copy(done = !task.done) else task
+        }
         saveNow()
     }
 
-    // —— 供 UI 递归渲染用
     fun childrenOf(parentId: String?): List<Task> =
         _tasks.value.filter { it.parentId == parentId }
 
@@ -76,13 +75,14 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         id: String,
         title: String,
         description: String,
-        priority: Priority,
-        time: TimePoint?
+        priority: Priority = Priority.None,
+        time: TimePoint? = null
     ) {
         val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
-        _tasks.value = _tasks.value.map {
-            if (it.id == id) {
-                it.copy(
+
+        _tasks.value = _tasks.value.map { task ->
+            if (task.id == id) {
+                task.copy(
                     title = title,
                     description = description,
                     priority = priority,
@@ -91,15 +91,21 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
                     sourceTimeZoneId = sourceTimeZoneId
                 )
             } else {
-                it
+                task
             }
         }
         saveNow()
     }
 
+    /**
+     * Cascade delete:
+     * 1) collect all descendant ids
+     * 2) optimistic remove from UI
+     * 3) delete from Room (source of truth)
+     */
     fun deleteTaskCascade(rootId: String) {
-        // 收集要删的所有 id（含子孙）
         val toDelete = mutableSetOf(rootId)
+
         var added: Boolean
         do {
             added = false
@@ -111,14 +117,21 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
             }
         } while (added)
 
+        // Optimistic UI update
         _tasks.value = _tasks.value.filterNot { it.id in toDelete }
-        saveNow()
+
+        // Real delete in DB (critical fix)
+        viewModelScope.launch {
+            repo.deleteTasks(toDelete.toList())
+            // No saveNow(): Room will emit new list via tasksFlow
+        }
     }
 
     fun postponeTodayTasks() {
         // 使用 TimePointUtils 中的统一"今天任务"逻辑
         val todayTasks = filterTodayTasks(_tasks.value)
         val todayIds = todayTasks.map { it.id }.toSet()
+
         val systemZone = ZoneId.systemDefault()
 
         _tasks.value = _tasks.value.map { task ->

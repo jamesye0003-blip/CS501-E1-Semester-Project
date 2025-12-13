@@ -1,6 +1,9 @@
 package com.example.lattice.ui.components
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,14 +78,38 @@ fun TaskNode(
         tasks.filter { it.parentId == task.id && it.done == showCompleted }
     }
 
+    // 新增：子任务折叠/展开状态（默认展开）
+    var childrenExpanded by rememberSaveable(task.id) { mutableStateOf(true) }
+
+    // 为 clickable（旧 Indication 兼容版本）准备的交互对象
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+
+    val canToggleChildren = children.isNotEmpty()
+
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
         // 1. 任务卡片主体
+        val surfaceModifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (task.done) 0.5f else 1f)
+            .let { base ->
+                if (canToggleChildren) {
+                    // 关键：使用带 indication 参数的 clickable 重载，避免 PlatformRipple 崩溃
+                    base.clickable(
+                        interactionSource = interactionSource,
+                        indication = indication
+                    ) {
+                        childrenExpanded = !childrenExpanded
+                    }
+                } else {
+                    base
+                }
+            }
+
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .alpha(if (task.done) 0.5f else 1f),
+            modifier = surfaceModifier,
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = if (depth == 0) 2.dp else 0.dp, // 根任务有阴影，子任务扁平
@@ -114,7 +142,9 @@ fun TaskNode(
                             checkedColor = priorityColor(task.priority),
                             uncheckedColor = MaterialTheme.colorScheme.outline
                         ),
-                        modifier = Modifier.size(24.dp).padding(top = 2.dp) // 微调位置
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(top = 2.dp) // 微调位置
                     )
 
                     Spacer(Modifier.width(12.dp))
@@ -205,8 +235,8 @@ fun TaskNode(
             }
         }
 
-        // 2. 递归渲染子任务 (Visual Hierarchy)
-        if (children.isNotEmpty()) {
+        // 2. 递归渲染子任务（支持折叠）
+        if (children.isNotEmpty() && childrenExpanded) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 // 左侧缩进 + 视觉引导线
                 Box(
@@ -257,7 +287,8 @@ private fun priorityColor(priority: Priority): Color = when (priority) {
     Priority.None -> PriorityNone
 }
 
-private val LOCAL_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+private val LOCAL_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
 
 private fun formatTimePointForList(timePoint: TimePoint): String {
     val systemZone: ZoneId = ZoneId.systemDefault()
