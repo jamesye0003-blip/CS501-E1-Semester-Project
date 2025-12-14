@@ -29,9 +29,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -44,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,7 +54,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.time.TaskFilter
@@ -77,11 +75,6 @@ fun TaskListScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedFilter by rememberSaveable { mutableStateOf(TaskFilter.Today) }
-
-    // TopAppBar Scroll Behavior
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-
-    // ... (Variables for filters, undo logic remain same as before) ...
     var hideDescription by rememberSaveable { mutableStateOf(false) }
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
@@ -134,11 +127,10 @@ fun TaskListScreen(
         }
     ) {
         Scaffold(
-            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                // Change: Use LargeTopAppBar for a more "App-like" bold feel
-                LargeTopAppBar(
-                    title = { Text(selectedFilter.name) }, // Or "My Tasks"
+                CenterAlignedTopAppBar(
+                    title = { Text(selectedFilter.getDisplayName()) },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(),
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Filled.Menu, contentDescription = "Menu")
@@ -160,13 +152,7 @@ fun TaskListScreen(
                                 onClick = { hideCompleted = !hideCompleted }
                             )
                         }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        titleContentColor = MaterialTheme.colorScheme.primary
-                    )
+                    }
                 )
             },
             floatingActionButton = {
@@ -318,6 +304,17 @@ fun TaskListScreen(
     }
 }
 
+/**
+ * Format the enum name of TaskFilter to user-friendly display text.
+ */
+private fun TaskFilter.getDisplayName(): String = when (this) {
+    TaskFilter.Today -> "Today"
+    TaskFilter.Tomorrow -> "Tomorrow"
+    TaskFilter.Next7Days -> "Next 7 Days"
+    TaskFilter.ThisMonth -> "This Month"
+    TaskFilter.All -> "All tasks"
+}
+
 @Composable
 private fun AppDrawerContent(
     selectedFilter: TaskFilter,
@@ -349,7 +346,7 @@ private fun AppDrawerContent(
             // Filter Options
             TaskFilter.values().forEach { filter ->
                 NavigationDrawerItem(
-                    label = { Text(filter.name) },
+                    label = { Text(filter.getDisplayName()) },
                     selected = selectedFilter == filter,
                     onClick = { onFilterSelected(filter) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
