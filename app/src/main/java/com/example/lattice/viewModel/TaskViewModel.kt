@@ -137,6 +137,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         val todayIds = todayTasks.map { it.id }.toSet()
 
         val systemZone = ZoneId.systemDefault()
+        val postponedIds = mutableListOf<String>()
 
         _tasks.value = _tasks.value.map { task ->
             if (!task.done && task.id in todayIds && task.dueAt != null) {
@@ -144,12 +145,21 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 val zonedDateTime = TimeConverter.toZonedDateTime(task.dueAt, systemZone)
                 val newZonedDateTime = zonedDateTime.plusDays(1)
                 val newDueAt = newZonedDateTime.toInstant()
+                postponedIds.add(task.id)
                 task.copy(dueAt = newDueAt)
             } else {
                 task
             }
         }
         saveNow()
+        
+        // Update isPostponed status in database
+        if (postponedIds.isNotEmpty()) {
+            viewModelScope.launch {
+                val defaultRepo = repo as? com.example.lattice.data.DefaultTaskRepository
+                defaultRepo?.updatePostponedStatus(postponedIds, isPostponed = true)
+            }
+        }
     }
 
     fun setSelectedFilter(filter: TaskFilter) {

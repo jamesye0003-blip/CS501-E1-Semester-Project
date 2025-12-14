@@ -67,6 +67,44 @@ interface TaskDao {
     @Update
     suspend fun updateTask(task: TaskEntity)
 
+    /**
+     * Batch update isPostponed field for specific task ids.
+     * Used when postponing tasks to tomorrow.
+     */
+    @Query("""
+        UPDATE tasks 
+        SET isPostponed = :isPostponed,
+            updatedAt = :updatedAt
+        WHERE id IN (:ids)
+    """)
+    suspend fun updatePostponedStatus(ids: List<String>, isPostponed: Boolean, updatedAt: Long)
+
+    /**
+     * Get count of on-time completed tasks (isDone=1, isPostponed=0).
+     */
+    @Query("""
+        SELECT COUNT(*) 
+        FROM tasks 
+        WHERE userId = :userId 
+            AND isDone = 1 
+            AND isPostponed = 0
+            AND isDeleted = 0
+    """)
+    suspend fun getOnTimeCompletedCount(userId: String): Int
+
+    /**
+     * Get count of postponed completed tasks (isDone=1, isPostponed=1).
+     */
+    @Query("""
+        SELECT COUNT(*) 
+        FROM tasks 
+        WHERE userId = :userId 
+            AND isDone = 1 
+            AND isPostponed = 1
+            AND isDeleted = 0
+    """)
+    suspend fun getPostponedCompletedCount(userId: String): Int
+
     // DELETE functions (soft delete)
     /**
      * Soft delete: mark task as deleted instead of physical deletion.

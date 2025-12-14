@@ -108,4 +108,28 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
             taskDao.softDeleteTasksByIds(ids, syncStatus, now)
         }
     }
+
+    /**
+     * Update isPostponed status for specific tasks.
+     * Used when postponing tasks to tomorrow.
+     */
+    suspend fun updatePostponedStatus(ids: List<String>, isPostponed: Boolean) {
+        withContext(Dispatchers.IO) {
+            if (ids.isEmpty()) return@withContext
+            val now = System.currentTimeMillis()
+            taskDao.updatePostponedStatus(ids, isPostponed, now)
+        }
+    }
+
+    /**
+     * Get statistics for completed tasks.
+     * Returns: Pair<onTimeCount, postponedCount>
+     */
+    suspend fun getCompletedTaskStats(userId: String): Pair<Int, Int> {
+        return withContext(Dispatchers.IO) {
+            val onTimeCount = taskDao.getOnTimeCompletedCount(userId)
+            val postponedCount = taskDao.getPostponedCompletedCount(userId)
+            Pair(onTimeCount, postponedCount)
+        }
+    }
 }
