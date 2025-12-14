@@ -55,7 +55,7 @@ val SurfaceDark = Color(0xFF1A1C1E)
 val OnSurfaceDark = Color(0xFFE2E2E6)
 
 // Priority Semantic Colors (Used specifically for Tasks)
-val PriorityHigh = Color(0xFFD32F2F)   // Red
-val PriorityMedium = Color(0xFFF57C00) // Orange/Amber
-val PriorityLow = Color(0xFF1976D2)    // Blue
+val PriorityHigh = Color(0xFFE53935)   // Red
+val PriorityMedium = Color(0xFFFFB300) // Orange/Amber
+val PriorityLow = Color(0xFF1E88E5)    // Blue
 val PriorityNone = Color(0xFF757575)   // Grey
