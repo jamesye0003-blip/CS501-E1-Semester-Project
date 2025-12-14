@@ -214,7 +214,7 @@ fun TaskNode(
                         ) {
                             if (!showCompleted) {
                                 DropdownMenuItem(
-                                    text = { Text("Add subtask") },
+                                    text = { Text("Add Subtask") },
                                     leadingIcon = { Icon(Icons.Default.SubdirectoryArrowRight, null) },
                                     onClick = { menuExpanded = false; onAddSub(task.id) }
                                 )

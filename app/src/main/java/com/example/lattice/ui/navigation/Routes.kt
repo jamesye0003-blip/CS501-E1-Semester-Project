@@ -11,9 +11,9 @@ sealed class Route(val route: String) {
     data object Profile : Route("profile")
 
     companion object {
-        const val EDITOR_ROUTE = "editor?parent={parent}&editId={editId}"
+        const val EDITOR_ROUTE = "editor?parent={parent}&editId={editId}&fromBottomNav={fromBottomNav}"
     }
 }
 
-fun buildEditorRoute(parentId: String? = null, editId: String? = null): String =
-    "editor?parent=${parentId ?: ""}&editId=${editId ?: ""}"
+fun buildEditorRoute(parentId: String? = null, editId: String? = null, fromBottomNav: Boolean = false): String =
+    "editor?parent=${parentId ?: ""}&editId=${editId ?: ""}&fromBottomNav=$fromBottomNav"

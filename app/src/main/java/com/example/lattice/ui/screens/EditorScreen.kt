@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.rememberDatePickerState
@@ -85,7 +86,9 @@ fun EditorScreen(
     initialDescription: String = "",
     initialPriority: Priority = Priority.None,
     initialTime: TimePoint? = null,
-    primaryLabel: String = "Save"
+    primaryLabel: String = "Save",
+    parentId: String? = null,
+    fromBottomNav: Boolean = false
 ) {
     var title by rememberSaveable(initialTitle) { mutableStateOf(initialTitle) }
     var description by rememberSaveable(initialDescription) { mutableStateOf(initialDescription) }
@@ -105,7 +108,11 @@ fun EditorScreen(
     var schedulePickerOpen by remember { mutableStateOf(false) }
 
     val isEditing = initialTitle.isNotBlank()
-    val topBarTitle = if (isEditing) "Edit Task" else "New Task"
+    val topBarTitle = when {
+        isEditing -> "Edit Task"
+        parentId != null -> "New Subtask"
+        else -> "New Task"
+    }
 
     val context = LocalContext.current
 
@@ -158,14 +165,28 @@ fun EditorScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(topBarTitle) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (fromBottomNav) {
+                TopAppBar(
+                    title = { Text(topBarTitle) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(topBarTitle) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    ),
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         Column(

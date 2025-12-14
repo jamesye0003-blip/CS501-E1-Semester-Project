@@ -76,10 +76,10 @@ fun AppNavHost(
             composable(Route.Home.route) {
                 TaskListScreen(
                     tasks = tasks,
-                    onAddRoot = { navController.navigate(buildEditorRoute(null)) },
-                    onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId)) },
+                    onAddRoot = { navController.navigate(buildEditorRoute(null, null, true)) },
+                    onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId, null, false)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
-                    onEdit = { id -> navController.navigate(buildEditorRoute(editId = id)) },
+                    onEdit = { id -> navController.navigate(buildEditorRoute(null, id, false)) },
                     onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
                 )
             }
@@ -88,18 +88,21 @@ fun AppNavHost(
             composable(Route.Calendar.route) {
                 CalendarScreen(
                     tasks = tasks,
-                    onEdit = { id -> navController.navigate(buildEditorRoute(editId = id)) },
-                    onAddTask = { navController.navigate(buildEditorRoute(null)) }
+                    onEdit = { id -> navController.navigate(buildEditorRoute(null, id, false)) },
+                    onAddTask = { navController.navigate(buildEditorRoute(null, null, false)) }
                 )
             }
 
-            composable("editor?parent={parent}&editId={editId}") { backStackEntry ->
+            composable("editor?parent={parent}&editId={editId}&fromBottomNav={fromBottomNav}") { backStackEntry ->
                 val parentId = backStackEntry.arguments
                     ?.getString("parent")
                     ?.ifBlank { null }
                 val editId = backStackEntry.arguments
                     ?.getString("editId")
                     ?.ifBlank { null }
+                val fromBottomNav = backStackEntry.arguments
+                    ?.getString("fromBottomNav")
+                    ?.toBoolean() ?: false
 
                 // Preload task when editing
                 val editing = tasks.firstOrNull { it.id == editId }
@@ -110,6 +113,8 @@ fun AppNavHost(
                     initialPriority = editing?.priority ?: Priority.None,
                     initialTime = editing?.toTimePoint(),
                     primaryLabel = if (editing != null) "Update" else "Save",
+                    parentId = parentId,
+                    fromBottomNav = fromBottomNav,
                     onBack = { navController.popBackStack() },
                     onSave = { title, description, priority, time ->
                         if (editing != null) {

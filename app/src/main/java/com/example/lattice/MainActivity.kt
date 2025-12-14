@@ -90,6 +90,10 @@ fun MainRoot(
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
+                    // 检查 editor 路由的 fromBottomNav 参数
+                    val isEditorFromBottomNav = navBackStackEntry?.arguments?.getString("fromBottomNav")
+                        ?.toBoolean() ?: false
+
                     val selectedIndex = when {
                         currentRoute == "${Route.Main.route}/${Route.Home.route}" ||
                                 currentRoute == Route.Home.route -> 0
@@ -97,7 +101,7 @@ fun MainRoot(
                         currentRoute == "${Route.Main.route}/${Route.Calendar.route}" ||
                                 currentRoute == Route.Calendar.route -> 1
 
-                        currentRoute?.contains("editor") == true -> 2
+                        currentRoute?.contains("editor") == true && isEditorFromBottomNav -> 2
 
                         currentRoute == "${Route.Main.route}/${Route.Profile.route}" ||
                                 currentRoute == Route.Profile.route -> 3
@@ -139,7 +143,7 @@ fun MainRoot(
                     NavigationBarItem(
                         selected = selectedIndex == 2,
                         onClick = {
-                            navController.navigate(buildEditorRoute(null))
+                            navController.navigate(buildEditorRoute(null, null, true))
                         },
                         icon = { Icon(Icons.Filled.Edit, contentDescription = "New") },
                         label = { Text("New") }
