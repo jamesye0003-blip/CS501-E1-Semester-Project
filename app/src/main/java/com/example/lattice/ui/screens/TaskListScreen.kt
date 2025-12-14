@@ -66,6 +66,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun TaskListScreen(
     tasks: List<Task>,
+    selectedFilter: TaskFilter,
+    onFilterSelected: (TaskFilter) -> Unit,
     onAddRoot: () -> Unit,
     onAddSub: (String) -> Unit,
     onToggleDone: (String) -> Unit,
@@ -74,7 +76,6 @@ fun TaskListScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var selectedFilter by rememberSaveable { mutableStateOf(TaskFilter.Today) }
     var hideDescription by rememberSaveable { mutableStateOf(false) }
     var hideCompleted by rememberSaveable { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
@@ -119,7 +120,7 @@ fun TaskListScreen(
             AppDrawerContent(
                 selectedFilter = selectedFilter,
                 onFilterSelected = { filter ->
-                    selectedFilter = filter
+                    onFilterSelected(filter)
                     scope.launch { drawerState.close() }
                 },
                 onCloseDrawer = { scope.launch { drawerState.close() } }

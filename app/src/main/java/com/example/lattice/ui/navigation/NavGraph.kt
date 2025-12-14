@@ -74,8 +74,11 @@ fun AppNavHost(
             route = Route.Main.route
         ) {
             composable(Route.Home.route) {
+                val selectedFilter by taskViewModel.selectedFilter.collectAsState()
                 TaskListScreen(
                     tasks = tasks,
+                    selectedFilter = selectedFilter,
+                    onFilterSelected = { filter -> taskViewModel.setSelectedFilter(filter) },
                     onAddRoot = { navController.navigate(buildEditorRoute(null, null, true)) },
                     onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId, null, false)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },

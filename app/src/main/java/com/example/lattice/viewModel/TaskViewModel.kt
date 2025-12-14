@@ -9,6 +9,7 @@ import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.model.toTaskTimeFields
 import com.example.lattice.domain.repository.TaskRepository
+import com.example.lattice.domain.time.TaskFilter
 import com.example.lattice.domain.time.TimeConverter
 import com.example.lattice.domain.time.filterTodayTasks
 import java.time.ZoneId
@@ -27,6 +28,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
+
+    private val _selectedFilter = MutableStateFlow<TaskFilter>(TaskFilter.Today)
+    val selectedFilter: StateFlow<TaskFilter> = _selectedFilter.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -146,5 +150,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         saveNow()
+    }
+
+    fun setSelectedFilter(filter: TaskFilter) {
+        _selectedFilter.value = filter
     }
 }
