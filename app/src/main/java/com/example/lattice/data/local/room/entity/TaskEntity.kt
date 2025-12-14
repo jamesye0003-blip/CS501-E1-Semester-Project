@@ -7,6 +7,9 @@ import androidx.room.PrimaryKey
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.data.local.room.entity.UserEntity
 
+
+enum class TaskSyncStatus { SYNCED, CREATED, UPDATED, DELETED }
+
 /**
  * Room数据库中的Task实体。
  * Task entity in Room database.
@@ -31,21 +34,34 @@ import com.example.lattice.data.local.room.entity.UserEntity
     ],
     indices = [
         Index(value = ["userId"]),
-        Index(value = ["parentId"])
+        Index(value = ["parentId"]),
+        Index(value = ["remoteId"]),
     ]
 )
 data class TaskEntity(
     @PrimaryKey
     val id: String,
-    val userId: String,  // Owning user id for multi-account isolation.
+    val parentId: String? = null,
+    val userId: String,  // Owning user id for local multi-account isolation.
+    /* Basic attributes fields */
     val title: String,
     val description: String = "",
     val priority: String = Priority.None.name,
-    val done: Boolean = false,
-    val parentId: String? = null,
-    val dueAt: Long? = null,  // Absolute deadline UTC millis; null if unset.
-    val hasSpecificTime: Boolean = false,  // Whether time-of-day is present (true) or all-day (false).
-    val sourceTimeZoneId: String? = null  // Source time zone id when created.
+    /* Time attributes fields */
+    val dueAt: Long? = null,                // Absolute deadline UTC millis; null if unset.
+    val hasSpecificTime: Boolean = false,   // Whether time-of-day is present (true) or all-day (false).
+    val sourceTimeZoneId: String? = null,   // Source time zone id when created.
+    /* Status attributes fields */
+    val isDone: Boolean = false,
+    val isPostponed: Boolean = false,
+    val isCancelled: Boolean = false,
+    /* Sync attributes fields */
+    val remoteId: String? = null,          // Remote id.
+    val createdAt: Long,                   // Creation timestamp UTC millis.
+    val updatedAt: Long,                   // Last update timestamp UTC millis.
+    val lastSyncedAt: Long? = null,        // Last sync timestamp UTC millis; null if never synced.
+    val isDeleted: Boolean = false,        // Whether the task is deleted.
+    val syncStatus: TaskSyncStatus = TaskSyncStatus.CREATED
 )
 
 

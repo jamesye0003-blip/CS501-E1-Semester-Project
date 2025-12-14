@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.lattice.data.local.room.entity.TaskEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 /**
  * Task实体的数据访问对象。
@@ -26,6 +27,7 @@ interface TaskDao {
     @Query(
         """
         SELECT * FROM tasks 
+        WHERE isDeleted = 0
         ORDER BY 
             CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END,
             dueAt ASC,
@@ -34,13 +36,13 @@ interface TaskDao {
     )
     fun getAllTasksFlow(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE id = :id")
+    @Query("SELECT * FROM tasks WHERE id = :id AND isDeleted = 0")
     suspend fun getTaskById(id: String): TaskEntity?
 
     @Query(
         """
         SELECT * FROM tasks 
-        WHERE parentId = :parentId 
+        WHERE parentId = :parentId AND isDeleted = 0
         ORDER BY 
             CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END,
             dueAt ASC,
@@ -52,7 +54,7 @@ interface TaskDao {
     @Query(
         """
         SELECT * FROM tasks 
-        WHERE userId = :userId 
+        WHERE userId = :userId AND isDeleted = 0
         ORDER BY 
             CASE WHEN dueAt IS NULL THEN 1 ELSE 0 END,
             dueAt ASC,
@@ -65,17 +67,39 @@ interface TaskDao {
     @Update
     suspend fun updateTask(task: TaskEntity)
 
-    // DELETE functions
+    // DELETE functions (soft delete)
+    /**
+     * Soft delete: mark task as deleted instead of physical deletion.
+     */
+    @Query("""
+        UPDATE tasks 
+        SET isDeleted = 1, 
+            syncStatus = :syncStatus,
+            updatedAt = :updatedAt
+        WHERE id = :id
+    """)
+    suspend fun softDeleteTaskById(id: String, syncStatus: String, updatedAt: Long)
+
+    /**
+     * Batch soft delete by ids.
+     * 用于级联删除时一次性软删除所有子孙任务。
+     */
+    @Query("""
+        UPDATE tasks 
+        SET isDeleted = 1, 
+            syncStatus = :syncStatus,
+            updatedAt = :updatedAt
+        WHERE id IN (:ids)
+    """)
+    suspend fun softDeleteTasksByIds(ids: List<String>, syncStatus: String, updatedAt: Long)
+
+    // Physical delete functions (for cleanup, not used in normal flow)
     @Delete
     suspend fun deleteTask(task: TaskEntity)
 
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteTaskById(id: String)
 
-    /**
-     * NEW: batch delete by ids.
-     * 用于级联删除时一次性删除所有子孙任务，避免逐条 DELETE。
-     */
     @Query("DELETE FROM tasks WHERE id IN (:ids)")
     suspend fun deleteTasksByIds(ids: List<String>)
 

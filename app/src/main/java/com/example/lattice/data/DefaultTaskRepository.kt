@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.lattice.data.local.datastore.authDataStore
 import com.example.lattice.data.local.room.db.AppDatabase
+import com.example.lattice.data.local.room.entity.TaskSyncStatus
 import com.example.lattice.data.local.room.mapper.TaskMapper
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.repository.TaskRepository
@@ -46,32 +47,65 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
 
     override suspend fun saveTasks(tasks: List<Task>) {
         withContext(Dispatchers.IO) {
-            // Using the REPLACE strategy, if the task already exists, update it; if it does not exist, insert it.
             val userId = currentUserIdFlow.first()
             if (userId.isNullOrBlank()) return@withContext
 
-            val entities = TaskMapper.toEntityList(tasks, userId)
+            // Get existing tasks to determine if they are new or updates
+            val existingTasks = taskDao.getTasksByUserId(userId).first()
+            val existingTaskMap = existingTasks.associateBy { it.id }
+            
+            val now = System.currentTimeMillis()
+            val entities = tasks.map { task ->
+                val existing = existingTaskMap[task.id]
+                if (existing != null) {
+                    // Update existing task: preserve sync fields, update syncStatus if needed
+                    val entity = TaskMapper.toEntity(task, userId, isNew = false)
+                    entity.copy(
+                        createdAt = existing.createdAt,
+                        lastSyncedAt = existing.lastSyncedAt,
+                        remoteId = existing.remoteId,
+                        isPostponed = existing.isPostponed,
+                        isCancelled = existing.isCancelled,
+                        syncStatus = when (existing.syncStatus) {
+                            TaskSyncStatus.SYNCED -> TaskSyncStatus.UPDATED
+                            TaskSyncStatus.CREATED -> TaskSyncStatus.CREATED  // Keep CREATED if not yet synced
+                            TaskSyncStatus.UPDATED -> TaskSyncStatus.UPDATED
+                            TaskSyncStatus.DELETED -> TaskSyncStatus.DELETED  // Shouldn't happen, but preserve
+                        },
+                        updatedAt = now
+                    )
+                } else {
+                    // New task
+                    TaskMapper.toEntity(task, userId, isNew = true)
+                }
+            }
+            
             taskDao.insertTasks(entities)
         }
     }
 
     /**
      * Delete single task (cascade is handled in ViewModel Layer).
+     * Uses soft delete: marks task as deleted instead of physical deletion.
      */
     suspend fun deleteTask(id: String) {
         withContext(Dispatchers.IO) {
-            taskDao.deleteTaskById(id)
+            val now = System.currentTimeMillis()
+            val syncStatus = TaskSyncStatus.DELETED.name
+            taskDao.softDeleteTaskById(id, syncStatus, now)
         }
     }
 
     /**
      * Delete multiple tasks (cascade handled in ViewModel Layer).
-     * IMPORTANT: use a single SQL statement to delete by ids.
+     * Uses soft delete: marks tasks as deleted instead of physical deletion.
      */
     override suspend fun deleteTasks(ids: List<String>) {
         withContext(Dispatchers.IO) {
             if (ids.isEmpty()) return@withContext
-            taskDao.deleteTasksByIds(ids)
+            val now = System.currentTimeMillis()
+            val syncStatus = TaskSyncStatus.DELETED.name
+            taskDao.softDeleteTasksByIds(ids, syncStatus, now)
         }
     }
 }
