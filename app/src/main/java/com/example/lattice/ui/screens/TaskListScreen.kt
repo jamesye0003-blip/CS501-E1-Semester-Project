@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TaskAlt
@@ -88,12 +90,27 @@ fun TaskListScreen(
     val rootIncomplete = remember(filteredTasks) { filteredTasks.filter { it.parentId == null && !it.done } }
     val completedRoots = remember(filteredTasks, hideCompleted) {
         if (hideCompleted) emptyList()
-        else filteredTasks.filter { t -> t.done && (t.parentId == null || filteredTasks.firstOrNull { it.id == t.parentId }?.done != true) }
+        else filteredTasks.filter { task ->
+            task.done && (task.parentId == null ||
+                    filteredTasks.firstOrNull { it.id == task.parentId }?.done != true)
+        }
     }
+    val completedCount = remember(filteredTasks) { filteredTasks.count { it.done } }
 
-    // ... (Undo logic variables remain same) ...
+    var completedExpanded by rememberSaveable { mutableStateOf(false) }
     var recentlyCompletedId by remember { mutableStateOf<String?>(null) }
     var showUndo by remember { mutableStateOf(false) }
+
+    // 如果 Undo 追踪的任务被其他逻辑改回未完成，则自动关闭 Undo
+    LaunchedEffect(filteredTasks, recentlyCompletedId) {
+        recentlyCompletedId?.let { id ->
+            val stillDone = filteredTasks.firstOrNull { it.id == id }?.done == true
+            if (!stillDone) {
+                showUndo = false
+                recentlyCompletedId = null
+            }
+        }
+    }
 
     LaunchedEffect(showUndo, recentlyCompletedId) {
         if (showUndo && recentlyCompletedId != null) {
@@ -199,8 +216,18 @@ fun TaskListScreen(
                                 showCompleted = false,
                                 hideDescription = hideDescription,
                                 onToggleDone = { id ->
-                                    recentlyCompletedId = id
-                                    showUndo = true
+                                    val task = filteredTasks.firstOrNull { it.id == id }
+                                    if (task != null && !task.done) {
+                                        // Moving to completed
+                                        recentlyCompletedId = id
+                                        showUndo = true
+                                    } else if (task != null && task.done) {
+                                        // Moving back to active, hide undo if referencing same task
+                                        if (recentlyCompletedId == id) {
+                                            showUndo = false
+                                            recentlyCompletedId = null
+                                        }
+                                    }
                                     onToggleDone(id)
                                 },
                                 onAddSub = onAddSub,
@@ -211,24 +238,49 @@ fun TaskListScreen(
 
                         if (completedRoots.isNotEmpty()) {
                             item {
-                                Text(
-                                    "Completed",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(vertical = 16.dp)
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Completed (${completedCount})",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    IconButton(onClick = { completedExpanded = !completedExpanded }) {
+                                        Icon(
+                                            imageVector = if (completedExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                                            contentDescription = if (completedExpanded) "Collapse completed" else "Expand completed"
+                                        )
+                                    }
+                                }
                             }
-                            items(completedRoots, key = { it.id }) { task ->
-                                TaskNode(
-                                    task = task,
-                                    tasks = filteredTasks,
-                                    showCompleted = true,
-                                    hideDescription = hideDescription,
-                                    onToggleDone = { id -> onToggleDone(id) }, // No undo for un-completing
-                                    onAddSub = onAddSub,
-                                    onEdit = onEdit,
-                                    onDelete = onDelete
-                                )
+                            if (completedExpanded) {
+                                items(completedRoots, key = { it.id }) { task ->
+                                    TaskNode(
+                                        task = task,
+                                        tasks = filteredTasks,
+                                        showCompleted = true,
+                                        hideDescription = hideDescription,
+                                        onToggleDone = { id ->
+                                            val task = filteredTasks.firstOrNull { it.id == id }
+                                            if (task != null && task.done) {
+                                                // Moving back to active, hide undo if referencing same task
+                                                if (recentlyCompletedId == id) {
+                                                    showUndo = false
+                                                    recentlyCompletedId = null
+                                                }
+                                            }
+                                            onToggleDone(id)
+                                        },
+                                        onAddSub = onAddSub,
+                                        onEdit = onEdit,
+                                        onDelete = onDelete
+                                    )
+                                }
                             }
                         }
                     }
@@ -236,7 +288,7 @@ fun TaskListScreen(
 
                 // Undo Button (Restored logic)
                 AnimatedVisibility(
-                    visible = showUndo,
+                    visible = showUndo && recentlyCompletedId != null,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(16.dp),
@@ -248,10 +300,14 @@ fun TaskListScreen(
                             TextButton(onClick = {
                                 recentlyCompletedId?.let { id -> onToggleDone(id) }
                                 showUndo = false
+                                recentlyCompletedId = null
                             }) { Text("Undo") }
                         },
                         dismissAction = {
-                            IconButton(onClick = { showUndo = false }) {
+                            IconButton(onClick = {
+                                showUndo = false
+                                recentlyCompletedId = null
+                            }) {
                                 Icon(Icons.Filled.Close, contentDescription = "Dismiss")
                             }
                         }
