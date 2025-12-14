@@ -9,3 +9,8 @@ import androidx.datastore.preferences.preferencesDataStore
  */
 val Context.authDataStore by preferencesDataStore(name = "auth")
 
+/**
+ * Settings DataStore for storing user preferences like sort order.
+ */
+val Context.settingsDataStore by preferencesDataStore(name = "settings")
+

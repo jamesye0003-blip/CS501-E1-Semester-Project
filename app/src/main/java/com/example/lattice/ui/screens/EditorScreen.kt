@@ -4,6 +4,10 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -32,11 +37,13 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.rememberDatePickerState
@@ -63,8 +70,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.time.TimeZoneData
-import com.example.lattice.domain.time.TimeZoneOption
 import com.example.lattice.viewModel.EditorViewModel
+import com.example.lattice.ui.theme.PriorityHigh
+import com.example.lattice.ui.theme.PriorityMedium
+import com.example.lattice.ui.theme.PriorityLow
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -85,7 +94,9 @@ fun EditorScreen(
     initialDescription: String = "",
     initialPriority: Priority = Priority.None,
     initialTime: TimePoint? = null,
-    primaryLabel: String = "Save"
+    primaryLabel: String = "Save",
+    parentId: String? = null,
+    fromBottomNav: Boolean = false
 ) {
     var title by rememberSaveable(initialTitle) { mutableStateOf(initialTitle) }
     var description by rememberSaveable(initialDescription) { mutableStateOf(initialDescription) }
@@ -105,7 +116,11 @@ fun EditorScreen(
     var schedulePickerOpen by remember { mutableStateOf(false) }
 
     val isEditing = initialTitle.isNotBlank()
-    val topBarTitle = if (isEditing) "Edit Task" else "New Task"
+    val topBarTitle = when {
+        isEditing -> "Edit Task"
+        parentId != null -> "New Subtask"
+        else -> "New Task"
+    }
 
     val context = LocalContext.current
 
@@ -158,14 +173,28 @@ fun EditorScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(topBarTitle) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (fromBottomNav) {
+                TopAppBar(
+                    title = { Text(topBarTitle) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(topBarTitle) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                    ),
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -298,18 +327,31 @@ fun EditorScreen(
                 Text("Priority", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Priority.values().forEach { priority ->
-                        FilterChip(
-                            selected = selectedPriority == priority,
-                            onClick = { selectedPriority = priority },
-                            label = { Text(priority.name) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor =
-                                    priorityColor(priority).copy(alpha = 0.2f),
-                                selectedLabelColor = priorityColor(priority),
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val isSelected = selectedPriority == priority
+                        val priorityColorValue = priorityColor(priority)
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val indication = LocalIndication.current
+                        Surface(
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = interactionSource,
+                                    indication = indication
+                                ) { selectedPriority = priority }
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) priorityColorValue else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(8.dp)
+                                ),
+                            shape = RoundedCornerShape(8.dp),
+                            color = priorityColorValue.copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = priority.name,
+                                color = priorityColorValue,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -633,9 +675,9 @@ private fun buildTimePoint(
 
 @Composable
 private fun priorityColor(priority: Priority): Color = when (priority) {
-    Priority.High -> Color(0xFFE53935)
-    Priority.Medium -> Color(0xFFFFB300)
-    Priority.Low -> Color(0xFF1E88E5)
+    Priority.High -> PriorityHigh
+    Priority.Medium -> PriorityMedium
+    Priority.Low -> PriorityLow
     Priority.None -> MaterialTheme.colorScheme.outline
 }
 

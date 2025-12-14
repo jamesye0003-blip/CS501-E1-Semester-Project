@@ -14,5 +14,10 @@ interface TaskRepository {
 
     /** Replace/save the current task list. */
     suspend fun saveTasks(tasks: List<Task>)
+
+    /**
+     * Delete tasks by ids (cascade handled by caller / ViewModel).
+     */
+    suspend fun deleteTasks(ids: List<String>)
 }
 

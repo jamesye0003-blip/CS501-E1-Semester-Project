@@ -1,6 +1,8 @@
 package com.example.lattice.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.lattice.data.local.datastore.authDataStore
 import com.example.lattice.data.local.room.db.AppDatabase
 import com.example.lattice.data.local.room.mapper.TaskMapper
 import com.example.lattice.domain.model.Task
@@ -12,8 +14,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import androidx.datastore.preferences.core.stringPreferencesKey
-import com.example.lattice.data.local.datastore.authDataStore
 
 private val USER_ID_KEY = stringPreferencesKey("user_id")
 
@@ -29,6 +29,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
 
     private val database = AppDatabase.getDatabase(context)
     private val taskDao = database.taskDao()
+
     private val currentUserIdFlow: Flow<String?> =
         context.authDataStore.data.map { prefs -> prefs[USER_ID_KEY] }
 
@@ -53,7 +54,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
             taskDao.insertTasks(entities)
         }
     }
-    
+
     /**
      * Delete single task (cascade is handled in ViewModel Layer).
      */
@@ -62,13 +63,15 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
             taskDao.deleteTaskById(id)
         }
     }
-    
+
     /**
      * Delete multiple tasks (cascade handled in ViewModel Layer).
+     * IMPORTANT: use a single SQL statement to delete by ids.
      */
-    suspend fun deleteTasks(ids: List<String>) {
+    override suspend fun deleteTasks(ids: List<String>) {
         withContext(Dispatchers.IO) {
-            ids.forEach { taskDao.deleteTaskById(it) }
+            if (ids.isEmpty()) return@withContext
+            taskDao.deleteTasksByIds(ids)
         }
     }
 }

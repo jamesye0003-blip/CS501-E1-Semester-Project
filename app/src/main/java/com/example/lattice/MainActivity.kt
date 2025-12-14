@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,10 +32,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.lattice.ui.theme.LatticeTheme
 import com.example.lattice.ui.navigation.AppNavHost
 import com.example.lattice.ui.navigation.Route
 import com.example.lattice.ui.navigation.buildEditorRoute
+import com.example.lattice.ui.theme.LatticeTheme
 import com.example.lattice.viewModel.AuthViewModel
 import com.example.lattice.viewModel.TaskViewModel
 
@@ -51,7 +52,7 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val authViewModel: AuthViewModel = viewModel()
                 val taskViewModel: TaskViewModel = viewModel()
-                
+
                 MainRoot(
                     navController = navController,
                     authViewModel = authViewModel,
@@ -89,26 +90,31 @@ fun MainRoot(
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
+                    // 检查 editor 路由的 fromBottomNav 参数
+                    val isEditorFromBottomNav = navBackStackEntry?.arguments?.getString("fromBottomNav")
+                        ?.toBoolean() ?: false
+
                     val selectedIndex = when {
                         currentRoute == "${Route.Main.route}/${Route.Home.route}" ||
-                            currentRoute == Route.Home.route -> 0
+                                currentRoute == Route.Home.route -> 0
 
-                        currentRoute?.contains("editor") == true -> 1
-                        
+                        currentRoute == "${Route.Main.route}/${Route.Calendar.route}" ||
+                                currentRoute == Route.Calendar.route -> 1
+
+                        currentRoute?.contains("editor") == true && isEditorFromBottomNav -> 2
+
                         currentRoute == "${Route.Main.route}/${Route.Profile.route}" ||
-                            currentRoute == Route.Profile.route -> 2
+                                currentRoute == Route.Profile.route -> 3
 
                         else -> 0
                     }
 
+                    // Tasks
                     NavigationBarItem(
                         selected = selectedIndex == 0,
                         onClick = {
-                            // Navigate to home - use relative path since we're in main navigation block
-                            val currentRoute = navController.currentBackStackEntry?.destination?.route
-                            if (currentRoute != Route.Home.route && 
-                                currentRoute != "${Route.Main.route}/${Route.Home.route}") {
-                                // Use relative path - navigation system will resolve it within main navigation block
+                            val r = navController.currentBackStackEntry?.destination?.route
+                            if (r != Route.Home.route && r != "${Route.Main.route}/${Route.Home.route}") {
                                 navController.navigate(Route.Home.route) {
                                     popUpTo(Route.Main.route) { inclusive = false }
                                 }
@@ -118,23 +124,37 @@ fun MainRoot(
                         label = { Text("Tasks") }
                     )
 
+                    // Calendar (NEW)
                     NavigationBarItem(
                         selected = selectedIndex == 1,
                         onClick = {
-                            // Navigate to editor - use relative path since we're in main navigation block
-                            // The navigation system will resolve it within the current navigation context
-                            navController.navigate(buildEditorRoute(null))
+                            val r = navController.currentBackStackEntry?.destination?.route
+                            if (r != Route.Calendar.route && r != "${Route.Main.route}/${Route.Calendar.route}") {
+                                navController.navigate(Route.Calendar.route) {
+                                    popUpTo(Route.Main.route) { inclusive = false }
+                                }
+                            }
                         },
-                        icon = { Icon(Icons.Filled.Edit, contentDescription = "Input") },
-                        label = { Text("New") }
+                        icon = { Icon(Icons.Filled.DateRange, contentDescription = "Calendar") },
+                        label = { Text("Calendar") }
                     )
-                    
+
+                    // New
                     NavigationBarItem(
                         selected = selectedIndex == 2,
                         onClick = {
-                            val currentRoute = navController.currentBackStackEntry?.destination?.route
-                            if (currentRoute != Route.Profile.route && 
-                                currentRoute != "${Route.Main.route}/${Route.Profile.route}") {
+                            navController.navigate(buildEditorRoute(null, null, true))
+                        },
+                        icon = { Icon(Icons.Filled.Edit, contentDescription = "New") },
+                        label = { Text("New") }
+                    )
+
+                    // Profile
+                    NavigationBarItem(
+                        selected = selectedIndex == 3,
+                        onClick = {
+                            val r = navController.currentBackStackEntry?.destination?.route
+                            if (r != Route.Profile.route && r != "${Route.Main.route}/${Route.Profile.route}") {
                                 navController.navigate(Route.Profile.route) {
                                     popUpTo(Route.Main.route) { inclusive = false }
                                 }
