@@ -51,6 +51,7 @@ import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.model.toTimePoint
+import com.example.lattice.domain.time.TaskSortOrder
 import com.example.lattice.ui.theme.PriorityHigh
 import com.example.lattice.ui.theme.PriorityLow
 import com.example.lattice.ui.theme.PriorityMedium
@@ -67,6 +68,7 @@ fun TaskNode(
     tasks: List<Task>,
     showCompleted: Boolean,
     hideDescription: Boolean = false,
+    sortOrder: TaskSortOrder = TaskSortOrder.Title,
     onToggleDone: (String) -> Unit,
     onAddSub: (String) -> Unit,
     onEdit: (String) -> Unit,
@@ -76,9 +78,10 @@ fun TaskNode(
     var menuExpanded by remember { mutableStateOf(false) }
     var showMaxDepthWarning by remember { mutableStateOf(false) }
 
-    // 过滤子任务
-    val children = remember(tasks, task.id, showCompleted) {
-        tasks.filter { it.parentId == task.id && it.done == showCompleted }
+    // 过滤并排序子任务
+    val children = remember(tasks, task.id, showCompleted, sortOrder) {
+        val filtered = tasks.filter { it.parentId == task.id && it.done == showCompleted }
+        sortTasksByLayer(filtered, tasks, sortOrder)
     }
 
     // 新增：子任务折叠/展开状态（默认展开）
@@ -279,6 +282,7 @@ fun TaskNode(
                             tasks = tasks,
                             showCompleted = showCompleted,
                             hideDescription = hideDescription,
+                            sortOrder = sortOrder,
                             onToggleDone = onToggleDone,
                             onAddSub = onAddSub,
                             onEdit = onEdit,
@@ -304,6 +308,87 @@ fun TaskNode(
             )
         }
     }
+}
+
+/**
+ * Sort tasks by layer recursively according to the specified sort order.
+ */
+private fun sortTasksByLayer(
+    tasks: List<Task>,
+    allTasks: List<Task>,
+    sortOrder: TaskSortOrder
+): List<Task> {
+    // allTasks is kept for potential future use in sorting logic
+    if (tasks.isEmpty()) return emptyList()
+    
+    return tasks.sortedWith { t1, t2 ->
+        compareTasks(t1, t2, sortOrder)
+    }
+}
+
+/**
+ * Compare two tasks according to the specified sort order.
+ */
+private fun compareTasks(
+    t1: Task,
+    t2: Task,
+    sortOrder: TaskSortOrder
+): Int {
+    return when (sortOrder) {
+        TaskSortOrder.Title -> {
+            t1.title.compareTo(t2.title, ignoreCase = true)
+        }
+        TaskSortOrder.Priority -> {
+            val priorityOrder = mapOf(
+                Priority.High to 0,
+                Priority.Medium to 1,
+                Priority.Low to 2,
+                Priority.None to 3
+            )
+            val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
+            if (priorityCompare != 0) priorityCompare
+            else compareByTime(t1, t2)
+        }
+        TaskSortOrder.Time -> {
+            val timeCompare = compareByTime(t1, t2)
+            if (timeCompare != 0) timeCompare
+            else {
+                val priorityOrder = mapOf(
+                    Priority.High to 0,
+                    Priority.Medium to 1,
+                    Priority.Low to 2,
+                    Priority.None to 3
+                )
+                val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
+                if (priorityCompare != 0) priorityCompare
+                else t1.title.compareTo(t2.title, ignoreCase = true)
+            }
+        }
+    }
+}
+
+/**
+ * Compare two tasks by time.
+ */
+private fun compareByTime(t1: Task, t2: Task): Int {
+    val time1 = t1.toTimePoint()
+    val time2 = t2.toTimePoint()
+    
+    if (time1 == null && time2 == null) return 0
+    if (time1 == null) return 1
+    if (time2 == null) return -1
+    
+    val dateCompare = time1.date.compareTo(time2.date)
+    if (dateCompare != 0) return dateCompare
+    
+    if (time1.time != null && time2.time != null) {
+        return time1.time.compareTo(time2.time)
+    }
+    
+    if (time1.time != null) return -1
+    if (time2.time != null) return 1
+    
+    return 0
 }
 
 @Composable

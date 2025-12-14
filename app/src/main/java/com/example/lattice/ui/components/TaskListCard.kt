@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
+import com.example.lattice.domain.time.TaskSortOrder
 
 @Composable
 fun TaskListCard(
@@ -32,6 +33,7 @@ fun TaskListCard(
     filteredTasks: List<Task>,
     showCompleted: Boolean,
     hideDescription: Boolean,
+    sortOrder: TaskSortOrder,
     onToggleDone: (String) -> Unit,
     onAddSub: (String) -> Unit,
     onEdit: (String) -> Unit,
@@ -81,6 +83,7 @@ fun TaskListCard(
                             tasks = filteredTasks,
                             showCompleted = showCompleted,
                             hideDescription = hideDescription,
+                            sortOrder = sortOrder,
                             onToggleDone = onToggleDone,
                             onAddSub = onAddSub,
                             onEdit = onEdit,
