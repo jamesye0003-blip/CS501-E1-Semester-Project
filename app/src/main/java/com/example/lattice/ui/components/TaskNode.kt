@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
@@ -32,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +74,7 @@ fun TaskNode(
     depth: Int = 0 // 新增：用于控制递归层级样式
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var showMaxDepthWarning by remember { mutableStateOf(false) }
 
     // 过滤子任务
     val children = remember(tasks, task.id, showCompleted) {
@@ -80,6 +83,9 @@ fun TaskNode(
 
     // 新增：子任务折叠/展开状态（默认展开）
     var childrenExpanded by rememberSaveable(task.id) { mutableStateOf(true) }
+    
+    // 检查是否达到最大层级（5层，depth从0开始，所以depth >= 4表示第5层）
+    val isMaxDepth = depth >= 4
 
     // 为 clickable（旧 Indication 兼容版本）准备的交互对象
     val interactionSource = remember { MutableInteractionSource() }
@@ -216,7 +222,14 @@ fun TaskNode(
                                 DropdownMenuItem(
                                     text = { Text("Add Subtask") },
                                     leadingIcon = { Icon(Icons.Default.SubdirectoryArrowRight, null) },
-                                    onClick = { menuExpanded = false; onAddSub(task.id) }
+                                    onClick = {
+                                        menuExpanded = false
+                                        if (isMaxDepth) {
+                                            showMaxDepthWarning = true
+                                        } else {
+                                            onAddSub(task.id)
+                                        }
+                                    }
                                 )
                             }
                             DropdownMenuItem(
@@ -275,6 +288,20 @@ fun TaskNode(
                     }
                 }
             }
+        }
+        
+        // Max depth warning dialog
+        if (showMaxDepthWarning) {
+            AlertDialog(
+                onDismissRequest = { showMaxDepthWarning = false },
+                title = { Text("Maximum Depth Reached") },
+                text = { Text("Cannot add subtask beyond 5 layers. Please consider reorganizing your task structure.") },
+                confirmButton = {
+                    TextButton(onClick = { showMaxDepthWarning = false }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }

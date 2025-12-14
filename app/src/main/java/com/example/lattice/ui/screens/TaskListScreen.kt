@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.time.TaskFilter
 import com.example.lattice.domain.time.filterTasksByDate
+import com.example.lattice.ui.components.TaskListCard
 import com.example.lattice.ui.components.TaskNode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,8 +91,8 @@ fun TaskListScreen(
         }
     }
     val completedCount = remember(filteredTasks) { filteredTasks.count { it.done } }
+    val incompleteCount = remember(rootIncomplete) { rootIncomplete.size }
 
-    var completedExpanded by rememberSaveable { mutableStateOf(false) }
     var recentlyCompletedId by remember { mutableStateOf<String?>(null) }
     var showUndo by remember { mutableStateOf(false) }
 
@@ -196,78 +197,59 @@ fun TaskListScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp) // Increase spacing
                     ) {
-                        items(rootIncomplete, key = { it.id }) { task ->
-                            TaskNode(
-                                task = task,
-                                tasks = filteredTasks,
-                                showCompleted = false,
-                                hideDescription = hideDescription,
-                                onToggleDone = { id ->
-                                    val task = filteredTasks.firstOrNull { it.id == id }
-                                    if (task != null && !task.done) {
-                                        // Moving to completed
-                                        recentlyCompletedId = id
-                                        showUndo = true
-                                    } else if (task != null && task.done) {
-                                        // Moving back to active, hide undo if referencing same task
-                                        if (recentlyCompletedId == id) {
-                                            showUndo = false
-                                            recentlyCompletedId = null
+                        if (rootIncomplete.isNotEmpty()) {
+                            item {
+                                TaskListCard(
+                                    title = "${selectedFilter.getDisplayName()} ($incompleteCount)",
+                                    tasks = rootIncomplete,
+                                    filteredTasks = filteredTasks,
+                                    showCompleted = false,
+                                    hideDescription = hideDescription,
+                                    onToggleDone = { id ->
+                                        val task = filteredTasks.firstOrNull { it.id == id }
+                                        if (task != null && !task.done) {
+                                            // Moving to completed
+                                            recentlyCompletedId = id
+                                            showUndo = true
+                                        } else if (task != null && task.done) {
+                                            // Moving back to active, hide undo if referencing same task
+                                            if (recentlyCompletedId == id) {
+                                                showUndo = false
+                                                recentlyCompletedId = null
+                                            }
                                         }
-                                    }
-                                    onToggleDone(id)
-                                },
-                                onAddSub = onAddSub,
-                                onEdit = onEdit,
-                                onDelete = onDelete
-                            )
+                                        onToggleDone(id)
+                                    },
+                                    onAddSub = onAddSub,
+                                    onEdit = onEdit,
+                                    onDelete = onDelete
+                                )
+                            }
                         }
 
                         if (completedRoots.isNotEmpty()) {
                             item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        "Completed (${completedCount})",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    IconButton(onClick = { completedExpanded = !completedExpanded }) {
-                                        Icon(
-                                            imageVector = if (completedExpanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                                            contentDescription = if (completedExpanded) "Collapse completed" else "Expand completed"
-                                        )
-                                    }
-                                }
-                            }
-                            if (completedExpanded) {
-                                items(completedRoots, key = { it.id }) { task ->
-                                    TaskNode(
-                                        task = task,
-                                        tasks = filteredTasks,
-                                        showCompleted = true,
-                                        hideDescription = hideDescription,
-                                        onToggleDone = { id ->
-                                            val task = filteredTasks.firstOrNull { it.id == id }
-                                            if (task != null && task.done) {
-                                                // Moving back to active, hide undo if referencing same task
-                                                if (recentlyCompletedId == id) {
-                                                    showUndo = false
-                                                    recentlyCompletedId = null
-                                                }
+                                TaskListCard(
+                                    title = "Completed ($completedCount)",
+                                    tasks = completedRoots,
+                                    filteredTasks = filteredTasks,
+                                    showCompleted = true,
+                                    hideDescription = hideDescription,
+                                    onToggleDone = { id ->
+                                        val task = filteredTasks.firstOrNull { it.id == id }
+                                        if (task != null && task.done) {
+                                            // Moving back to active, hide undo if referencing same task
+                                            if (recentlyCompletedId == id) {
+                                                showUndo = false
+                                                recentlyCompletedId = null
                                             }
-                                            onToggleDone(id)
-                                        },
-                                        onAddSub = onAddSub,
-                                        onEdit = onEdit,
-                                        onDelete = onDelete
-                                    )
-                                }
+                                        }
+                                        onToggleDone(id)
+                                    },
+                                    onAddSub = onAddSub,
+                                    onEdit = onEdit,
+                                    onDelete = onDelete
+                                )
                             }
                         }
                     }
