@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.AttachFile
@@ -98,6 +100,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.lattice.domain.model.Attachment
+import com.example.lattice.domain.model.AttachmentType
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.time.TimeZoneData
@@ -114,6 +118,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale as JavaLocale
+import java.util.UUID
 import kotlin.math.abs
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -243,11 +248,13 @@ fun EditorScreen(
         if (success) {
             val fileName = cameraPhotoFile.name
             val fileSize = cameraPhotoFile.length()
-            val attachment = com.example.lattice.domain.model.Attachment(
-                filePath = cameraPhotoFile.absolutePath,
-                fileName = fileName,
-                fileType = com.example.lattice.domain.model.AttachmentType.IMAGE,
-                fileSize = fileSize
+            val attachment = Attachment(
+                UUID.randomUUID().toString(),
+                cameraPhotoFile.absolutePath,
+                fileName,
+                AttachmentType.IMAGE,
+                null,
+                fileSize
             )
             attachments.add(attachment)
             uploadSuccessMessage = "Upload successful: $fileName"
@@ -301,11 +308,13 @@ fun EditorScreen(
             val fileSize = fileInfo?.second
             val copiedFile = copyFileToInternalStorage(it, fileName)
             copiedFile?.let { file ->
-                val attachment = com.example.lattice.domain.model.Attachment(
-                    filePath = file.absolutePath,
-                    fileName = fileName,
-                    fileType = com.example.lattice.domain.model.AttachmentType.IMAGE,
-                    fileSize = fileSize
+                val attachment = Attachment(
+                    UUID.randomUUID().toString(),
+                    file.absolutePath,
+                    fileName,
+                    AttachmentType.IMAGE,
+                    null,
+                    fileSize
                 )
                 attachments.add(attachment)
                 uploadSuccessMessage = "Upload successful: $fileName"
@@ -328,17 +337,19 @@ fun EditorScreen(
             val fileSize = fileInfo?.second
             val extension = originalFileName.substringAfterLast('.', "").lowercase()
             val fileType = when (extension) {
-                "pdf" -> com.example.lattice.domain.model.AttachmentType.PDF
-                "doc", "docx" -> com.example.lattice.domain.model.AttachmentType.DOC
-                else -> com.example.lattice.domain.model.AttachmentType.OTHER
+                "pdf" -> AttachmentType.PDF
+                "doc", "docx" -> AttachmentType.DOC
+                else -> AttachmentType.OTHER
             }
             val copiedFile = copyFileToInternalStorage(it, originalFileName)
             copiedFile?.let { file ->
-                val attachment = com.example.lattice.domain.model.Attachment(
-                    filePath = file.absolutePath,
-                    fileName = originalFileName,
-                    fileType = fileType,
-                    fileSize = fileSize
+                val attachment = Attachment(
+                    UUID.randomUUID().toString(),
+                    file.absolutePath,
+                    originalFileName,
+                    fileType,
+                    null,
+                    fileSize
                 )
                 attachments.add(attachment)
                 uploadSuccessMessage = "Upload successful: $originalFileName"
@@ -420,22 +431,23 @@ fun EditorScreen(
             }
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(padding)
-                .padding(16.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Title + 语音按钮
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("Title") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                trailingIcon = {
+            item {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    trailingIcon = {
                     IconButton(
                         enabled = !isRecording && !isTranscribing,
                         onClick = {
@@ -468,87 +480,97 @@ fun EditorScreen(
                     }
                 }
             )
+            }
 
             // Description + 语音按钮
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("Description") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 3,
-                maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        if (title.isNotBlank()) {
-                            val timePoint = buildTimePoint(
-                                dateText,
-                                timeText,
-                                zoneIdText,
-                                timeFormatter
-                            )
-                            // ✅ 只触发保存事件，由外部决定是否导航返回
-                            onSave(title, description, selectedPriority, timePoint, attachments)
-                        }
-                    }
-                ),
-                trailingIcon = {
-                    IconButton(
-                        enabled = !isRecording && !isTranscribing,
-                        onClick = {
-                            editorViewModel.clearError()
-                            val granted =
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                            if (granted) {
-                                editorViewModel.startRecording(
-                                    onResult = { text ->
-                                        description = listOf(description, text)
-                                            .filter { it.isNotBlank() }
-                                            .joinToString("\n")
-                                    }
+            item {
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (title.isNotBlank()) {
+                                val timePoint = buildTimePoint(
+                                    dateText,
+                                    timeText,
+                                    zoneIdText,
+                                    timeFormatter
                                 )
-                            } else {
-                                descriptionPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                // ✅ 只触发保存事件，由外部决定是否导航返回
+                                onSave(title, description, selectedPriority, timePoint, attachments)
                             }
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Mic,
-                            contentDescription = "Record voice"
-                        )
+                    ),
+                    trailingIcon = {
+                        IconButton(
+                            enabled = !isRecording && !isTranscribing,
+                            onClick = {
+                                editorViewModel.clearError()
+                                val granted =
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                if (granted) {
+                                    editorViewModel.startRecording(
+                                        onResult = { text ->
+                                            description = listOf(description, text)
+                                                .filter { it.isNotBlank() }
+                                                .joinToString("\n")
+                                        }
+                                    )
+                                } else {
+                                    descriptionPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Mic,
+                                contentDescription = "Record voice"
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
 
             if (isRecording) {
-                Text(
-                    "Listening…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                item {
+                    Text(
+                        "Listening…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             } else if (isTranscribing) {
-                Text(
-                    "Transcribing…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                item {
+                    Text(
+                        "Transcribing…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             if (speechError != null) {
-                Text(
-                    text = speechError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                item {
+                    Text(
+                        text = speechError,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             // Priority
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Priority", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Priority", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Priority.values().forEach { priority ->
                         val isSelected = selectedPriority == priority
                         val priorityColorValue = priorityColor(priority)
@@ -578,124 +600,133 @@ fun EditorScreen(
                     }
                 }
             }
+            }
 
             // Scheduled time
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Scheduled Time", style = MaterialTheme.typography.titleMedium)
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Scheduled Time", style = MaterialTheme.typography.titleMedium)
 
-                val selectedZone = runCatching { ZoneId.of(zoneIdText) }
-                    .getOrDefault(ZoneId.systemDefault())
-                
-                val cityName = TimeZoneData.findCityByZoneId(selectedZone) ?: selectedZone.id
-                val now = ZonedDateTime.now(selectedZone)
-                val offset = now.offset
-                val hours = offset.totalSeconds / 3600
-                val minutes = kotlin.math.abs(offset.totalSeconds % 3600) / 60
-                val offsetStr = when {
-                    minutes == 0 -> "UTC${if (hours >= 0) "+" else ""}$hours"
-                    else -> "UTC${if (hours >= 0) "+" else ""}$hours:${minutes.toString().padStart(2, '0')}"
-                }
-                val zoneDisplay = "$cityName, $offsetStr"
-
-                val combinedText = when {
-                    dateText.isBlank() -> "Not set"
-                    timeText.isBlank() -> "$dateText ($zoneDisplay)"
-                    else -> "$dateText $timeText ($zoneDisplay)"
-                }
-
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Text(
-                        text = combinedText,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { schedulePickerOpen = true }) {
-                        Text("Pick Schedule")
+                    val selectedZone = runCatching { ZoneId.of(zoneIdText) }
+                        .getOrDefault(ZoneId.systemDefault())
+                    
+                    val cityName = TimeZoneData.findCityByZoneId(selectedZone) ?: selectedZone.id
+                    val now = ZonedDateTime.now(selectedZone)
+                    val offset = now.offset
+                    val hours = offset.totalSeconds / 3600
+                    val minutes = kotlin.math.abs(offset.totalSeconds % 3600) / 60
+                    val offsetStr = when {
+                        minutes == 0 -> "UTC${if (hours >= 0) "+" else ""}$hours"
+                        else -> "UTC${if (hours >= 0) "+" else ""}$hours:${minutes.toString().padStart(2, '0')}"
                     }
-                    TextButton(
-                        onClick = {
-                            dateText = ""
-                            timeText = ""
-                            zoneIdText = ZoneId.systemDefault().id
-                        }
+                    val zoneDisplay = "$cityName, $offsetStr"
+
+                    val combinedText = when {
+                        dateText.isBlank() -> "Not set"
+                        timeText.isBlank() -> "$dateText ($zoneDisplay)"
+                        else -> "$dateText $timeText ($zoneDisplay)"
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     ) {
-                        Text("Clear")
+                        Text(
+                            text = combinedText,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { schedulePickerOpen = true }) {
+                            Text("Pick Schedule")
+                        }
+                        TextButton(
+                            onClick = {
+                                dateText = ""
+                                timeText = ""
+                                zoneIdText = ZoneId.systemDefault().id
+                            }
+                        ) {
+                            Text("Clear")
+                        }
                     }
                 }
             }
 
             // Attachments
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Attachments", style = MaterialTheme.typography.titleMedium)
-                
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { uploadOptionsOpen = true }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Upload")
-                    }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Attachments", style = MaterialTheme.typography.titleMedium)
                     
-                    if (attachments.isNotEmpty()) {
-                        TextButton(onClick = { attachmentPreviewOpen = true }) {
-                            Text("Preview Attachment")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { uploadOptionsOpen = true }) {
+                            Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Upload")
+                        }
+                        
+                        if (attachments.isNotEmpty()) {
+                            TextButton(onClick = { attachmentPreviewOpen = true }) {
+                                Text("Preview Attachment")
+                            }
                         }
                     }
-                }
-                
-                // Upload success message
-                if (showUploadSuccess && uploadSuccessMessage != null) {
-                    Text(
-                        text = uploadSuccessMessage!!,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    
+                    // Upload success message
+                    if (showUploadSuccess && uploadSuccessMessage != null) {
+                        Text(
+                            text = uploadSuccessMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 
             // Bottom buttons
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onBack,
-                    modifier = Modifier.weight(1f)
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Cancel", maxLines = 1, softWrap = false)
-                }
-                Button(
-                    onClick = {
-                        if (title.isNotBlank()) {
-                            val timePoint = buildTimePoint(
-                                dateText,
-                                timeText,
-                                zoneIdText,
-                                timeFormatter
-                            )
-                            // ✅ 同样只负责发出保存事件
-                            onSave(title, description, selectedPriority, timePoint, attachments)
-                        }
-                    },
-                    enabled = title.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(primaryLabel, maxLines = 1, softWrap = false)
+                    OutlinedButton(
+                        onClick = onBack,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel", maxLines = 1, softWrap = false)
+                    }
+                    Button(
+                        onClick = {
+                            if (title.isNotBlank()) {
+                                val timePoint = buildTimePoint(
+                                    dateText,
+                                    timeText,
+                                    zoneIdText,
+                                    timeFormatter
+                                )
+                                // ✅ 同样只负责发出保存事件
+                                onSave(title, description, selectedPriority, timePoint, attachments)
+                            }
+                        },
+                        enabled = title.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(primaryLabel, maxLines = 1, softWrap = false)
+                    }
                 }
             }
 
-            Text(
-                "Tip: you can add subtasks under any task from the Tasks screen.",
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold
-            )
+            item {
+                Text(
+                    "Tip: you can add subtasks under any task from the Tasks screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 
@@ -1067,7 +1098,6 @@ private fun AttachmentBottomSheet(
     onDelete: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val contentScroll = rememberScrollState()
     
     LaunchedEffect(Unit) {
         if (!sheetState.isVisible) sheetState.show()
@@ -1079,27 +1109,35 @@ private fun AttachmentBottomSheet(
         containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 4.dp
     ) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 600.dp)
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-                .verticalScroll(contentScroll),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Attachments", style = MaterialTheme.typography.titleLarge)
+            item {
+                Text("Attachments", style = MaterialTheme.typography.titleLarge)
+            }
             
-            HorizontalDivider()
+            item {
+                HorizontalDivider()
+            }
             
             if (attachments.isEmpty()) {
-                Text(
-                    "No attachments",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
+                item {
+                    Text(
+                        "No attachments",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
             } else {
-                attachments.forEach { attachment ->
+                items(
+                    items = attachments,
+                    key = { it.id }
+                ) { attachment ->
                     AttachmentPreviewItem(
                         attachment = attachment,
                         onDelete = { onDelete(attachment.id) }
@@ -1205,9 +1243,9 @@ private fun AttachmentPreviewItem(
                                     maxLines = 2,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
-                                if (attachment.fileSize != null) {
+                                attachment.fileSize?.let { size ->
                                     Text(
-                                        text = formatFileSize(attachment.fileSize),
+                                        text = formatFileSize(size),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
