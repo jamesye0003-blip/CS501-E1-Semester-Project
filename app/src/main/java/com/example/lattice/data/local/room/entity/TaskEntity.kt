@@ -40,32 +40,36 @@ enum class TaskSyncStatus { SYNCED, CREATED, UPDATED, DELETED }
 )
 data class TaskEntity(
     @PrimaryKey
-    val id: String,
-    val parentId: String? = null,
-    val userId: String,  // Owning user id for local multi-account isolation.
+    val id: String,                       // localTaskId (UUID) = remote docId
+    val parentId: String? = null,         // 树结构（同一用户内）
+    val userId: String,                   // localUserId 外键（本地多账号隔离）
+
     /* Basic attributes fields */
     val title: String,
     val description: String = "",
-    val priority: String = Priority.None.name,
+    val priority: String = Priority.None.name, // data层用String，domain层映射Priority enum
+
     /* Time attributes fields */
-    val dueAt: Long? = null,                // Absolute deadline UTC millis; null if unset.
-    val hasSpecificTime: Boolean = false,   // Whether time-of-day is present (true) or all-day (false).
-    val sourceTimeZoneId: String? = null,   // Source time zone id when created.
+    val dueAt: Long? = null,              // Absolute deadline UTC millis; null if unset.
+    val hasSpecificTime: Boolean = false, // Whether time-of-day is present (true) or all-day (false).
+    val sourceTimeZoneId: String? = null, // Source time zone id when created.
+
     /* Attachment attributes fields */
-    val attachments: List<com.example.lattice.domain.model.Attachment>? = null,  // List of attachments (stored as JSON)
+    val attachments: List<com.example.lattice.domain.model.Attachment>? = null, // stored as JSON via Converters
+
     /* Status attributes fields */
     val isDone: Boolean = false,
     val isPostponed: Boolean = false,
     val isCancelled: Boolean = false,
+
     /* Sync attributes fields */
-    val remoteId: String? = null,          // Remote id.
-    val createdAt: Long,                   // Creation timestamp UTC millis.
-    val updatedAt: Long,                   // Last update timestamp UTC millis.
-    val lastSyncedAt: Long? = null,        // Last sync timestamp UTC millis; null if never synced.
-    val isDeleted: Boolean = false,        // Whether the task is deleted.
+    val remoteId: String = id,            // ✅ docId 固定：remoteId == id（非空）
+    val createdAt: Long,                  // Creation timestamp UTC millis.
+    val updatedAt: Long,                  // Last update timestamp UTC millis.
+    val lastSyncedAt: Long? = null,       // Last sync timestamp UTC millis; null if never synced.
+    val isDeleted: Boolean = false,       // Soft delete tombstone.
     val syncStatus: TaskSyncStatus = TaskSyncStatus.CREATED
 )
-
 
 
 

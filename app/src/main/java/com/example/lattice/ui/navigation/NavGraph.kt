@@ -153,6 +153,7 @@ fun AppNavHost(
                     isDarkMode = isDarkMode,
                     onToggleDark = onToggleDark,
                     onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() },
+                    onSyncNow = { taskViewModel.syncNow() },   // ✅ 新增
                     onLogout = {
                         authViewModel.logout()
                         navController.navigate(Route.Login.route) {

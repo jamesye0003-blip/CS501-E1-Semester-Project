@@ -33,6 +33,9 @@ interface UserDao {
     
     @Query("DELETE FROM users")
     suspend fun deleteAllUsers()
+
+    @Query("SELECT * FROM users WHERE remoteId = :remoteId AND isDeleted = 0 LIMIT 1")
+    suspend fun getUserByRemoteId(remoteId: String): UserEntity?
 }
 
 

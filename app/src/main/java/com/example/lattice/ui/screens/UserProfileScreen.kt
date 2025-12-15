@@ -1,7 +1,5 @@
 package com.example.lattice.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,11 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,15 +20,15 @@ import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -44,28 +40,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.lattice.domain.model.Task
-import com.example.lattice.domain.time.filterTodayTasks
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.lattice.data.DefaultTaskRepository
 import com.example.lattice.data.local.datastore.authDataStore
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.lattice.domain.model.Task
+import com.example.lattice.domain.time.filterTodayTasks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-
+import androidx.compose.foundation.clickable
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserProfileScreen(
@@ -74,10 +69,13 @@ fun UserProfileScreen(
     isDarkMode: Boolean,
     onToggleDark: () -> Unit,
     onPostponeTodayTasks: () -> Unit,
+    onSyncNow: () -> Unit,
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-    var showDailyReview by remember { mutableStateOf(false) }
+
+    var showDailyReviewDialog by remember { mutableStateOf(false) }
+    var showSyncDialog by remember { mutableStateOf(false) }
 
     val todayTasks = remember(tasks) { filterTodayTasks(tasks) }
     val completedToday = remember(todayTasks) { todayTasks.filter { it.done } }
@@ -86,24 +84,25 @@ fun UserProfileScreen(
     val totalCompletedLifetime = remember(tasks) { tasks.count { it.done } }
     val totalTasksLifetime = tasks.size
 
-    // Get completed task statistics (on-time vs postponed)
+    // Completed task statistics (on-time vs postponed) from Room flags.
     var onTimeCompletedCount by remember { mutableStateOf(0) }
     var postponedCompletedCount by remember { mutableStateOf(0) }
-    
+
     LaunchedEffect(tasks) {
-        // Get current user ID from DataStore
         val userId = withContext(Dispatchers.IO) {
             context.authDataStore.data.first()[stringPreferencesKey("user_id")]
         }
-        
         if (userId != null) {
             val repo = DefaultTaskRepository(context)
             val (onTime, postponed) = repo.getCompletedTaskStats(userId)
             onTimeCompletedCount = onTime
             postponedCompletedCount = postponed
+        } else {
+            onTimeCompletedCount = 0
+            postponedCompletedCount = 0
         }
     }
-    
+
     val totalCompleted = onTimeCompletedCount + postponedCompletedCount
     val onTimeRate = if (totalCompleted > 0) (onTimeCompletedCount * 100 / totalCompleted) else 0
     val postponeRate = if (totalCompleted > 0) (postponedCompletedCount * 100 / totalCompleted) else 0
@@ -113,11 +112,10 @@ fun UserProfileScreen(
             TopAppBar(
                 title = { Text("Profile") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background, // 与背景融合
+                    containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
                 ),
                 actions = {
-                    // Clean logout icon
                     IconButton(onClick = onLogout) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Logout,
@@ -129,14 +127,14 @@ fun UserProfileScreen(
             )
         }
     ) { innerPadding ->
-        LazyColumn(
+        androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // 1. User Identity Card (Big & Bold)
+            // 1) User header
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -171,7 +169,7 @@ fun UserProfileScreen(
                 }
             }
 
-            // 2. Today's Overview Section
+            // 2) Today Overview
             item {
                 Text(
                     "Today's Overview",
@@ -185,7 +183,6 @@ fun UserProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Today Left
                     StatCard(
                         label = "To-Do",
                         value = todoToday.size.toString(),
@@ -193,18 +190,17 @@ fun UserProfileScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
                     )
-                    // Today Done
                     StatCard(
                         label = "Completed",
                         value = completedToday.size.toString(),
                         icon = Icons.Default.CheckCircle,
-                        color = Color(0xFF2E7D32), // Success Green
+                        color = Color(0xFF2E7D32),
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            // 3. Lifetime Stats Section
+            // 3) Lifetime Stats
             item {
                 Text(
                     "Lifetime Stats",
@@ -228,7 +224,7 @@ fun UserProfileScreen(
                     StatCard(
                         label = "Completion Rate",
                         value = if (totalTasksLifetime > 0) "${(totalCompletedLifetime * 100 / totalTasksLifetime)}%" else "0%",
-                        icon = Icons.Default.Person, // Or chart icon
+                        icon = Icons.Default.CheckCircle,
                         color = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.weight(1f)
                     )
@@ -244,32 +240,32 @@ fun UserProfileScreen(
                         label = "On-time Rate",
                         value = "$onTimeRate%",
                         icon = Icons.Default.CheckCircle,
-                        color = Color(0xFF2E7D32), // Success Green
+                        color = Color(0xFF2E7D32),
                         modifier = Modifier.weight(1f)
                     )
                     StatCard(
                         label = "Postpone Rate",
                         value = "$postponeRate%",
                         icon = Icons.Default.Schedule,
-                        color = Color(0xFFFF9800), // Orange
+                        color = Color(0xFFFF9800),
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            // 4. Settings / Actions Section
+            // 4) Settings / Actions
             item {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow, // Subtle background
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
                     Column {
                         ListItem(
                             headlineContent = { Text("Dark Mode") },
                             leadingContent = {
                                 Icon(
-                                    if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
-                                    null
+                                    imageVector = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
+                                    contentDescription = null
                                 )
                             },
                             trailingContent = {
@@ -286,7 +282,21 @@ fun UserProfileScreen(
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = rememberRipple(),
-                                    onClick = { showDailyReview = true }
+                                    onClick = { showDailyReviewDialog = true }
+                                ),
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+
+                        // NEW: Sync Now entry (previously missing)
+                        ListItem(
+                            headlineContent = { Text("Sync Now") },
+                            supportingContent = { Text("Upload/download tasks with Firebase") },
+                            leadingContent = { Icon(Icons.Default.Sync, null) },
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(),
+                                    onClick = { showSyncDialog = true }
                                 ),
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                         )
@@ -296,22 +306,36 @@ fun UserProfileScreen(
         }
     }
 
-    // (AlertDialog code remains mostly the same, just keeping the logic)
-    if (showDailyReview) {
+    if (showDailyReviewDialog) {
         AlertDialog(
-            onDismissRequest = { showDailyReview = false },
+            onDismissRequest = { showDailyReviewDialog = false },
             title = { Text("Review Today") },
-            text = {
-                Text("Move ${todoToday.size} unfinished tasks to tomorrow?")
-            },
+            text = { Text("Move ${todoToday.size} unfinished tasks to tomorrow?") },
             confirmButton = {
                 TextButton(onClick = {
                     onPostponeTodayTasks()
-                    showDailyReview = false
+                    showDailyReviewDialog = false
                 }) { Text("Postpone All") }
             },
             dismissButton = {
-                TextButton(onClick = { showDailyReview = false }) { Text("Cancel") }
+                TextButton(onClick = { showDailyReviewDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showSyncDialog) {
+        AlertDialog(
+            onDismissRequest = { showSyncDialog = false },
+            title = { Text("Sync Now") },
+            text = { Text("Run a full sync with Firebase now?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSyncNow()
+                    showSyncDialog = false
+                }) { Text("Sync") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSyncDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -328,7 +352,7 @@ fun StatCard(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface, // Clean white/dark
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -341,7 +365,11 @@ fun StatCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
             Text(
                 text = value,

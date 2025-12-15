@@ -170,4 +170,9 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun setSelectedFilter(filter: TaskFilter) {
         _selectedFilter.value = filter
     }
+    fun syncNow() {
+        viewModelScope.launch {
+            repo.syncNow()
+        }
+    }
 }

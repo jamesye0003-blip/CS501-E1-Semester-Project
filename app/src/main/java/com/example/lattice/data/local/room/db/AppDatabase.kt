@@ -23,7 +23,7 @@ import com.example.lattice.data.local.room.entity.UserEntity
  */
 @Database(
     entities = [UserEntity::class, TaskEntity::class],
-    version = 4,  // Incremented due to Entity schema changes (done->isDone, added sync fields)
+    version = 5,  // Incremented due to Entity schema changes (done->isDone, added sync fields)
     exportSchema = false
 )
 @TypeConverters(Converters::class)
