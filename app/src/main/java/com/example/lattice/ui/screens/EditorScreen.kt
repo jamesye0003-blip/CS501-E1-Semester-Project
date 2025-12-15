@@ -1,9 +1,39 @@
 package com.example.lattice.ui.screens
 
 import android.Manifest
+import android.content.ContentResolver
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import androidx.compose.foundation.Image
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.Date
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +52,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -82,18 +113,25 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.Locale
+import java.util.Locale as JavaLocale
 import kotlin.math.abs
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.ListItem
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     onBack: () -> Unit,
-    onSave: (String, String, Priority, TimePoint?) -> Unit,
+    onSave: (String, String, Priority, TimePoint?, List<com.example.lattice.domain.model.Attachment>) -> Unit,
     initialTitle: String = "",
     initialDescription: String = "",
     initialPriority: Priority = Priority.None,
     initialTime: TimePoint? = null,
+    initialAttachments: List<com.example.lattice.domain.model.Attachment> = emptyList(),
     primaryLabel: String = "Save",
     parentId: String? = null,
     fromBottomNav: Boolean = false
@@ -114,6 +152,15 @@ fun EditorScreen(
     ) { mutableStateOf(initialTime?.zoneId?.id ?: ZoneId.systemDefault().id) }
 
     var schedulePickerOpen by remember { mutableStateOf(false) }
+    
+    // Attachment state
+    var attachments by rememberSaveable(initialAttachments) { 
+        mutableStateOf(initialAttachments.toMutableList()) 
+    }
+    var uploadOptionsOpen by remember { mutableStateOf(false) }
+    var attachmentPreviewOpen by remember { mutableStateOf(false) }
+    var uploadSuccessMessage by remember { mutableStateOf<String?>(null) }
+    var showUploadSuccess by remember { mutableStateOf(false) }
 
     val isEditing = initialTitle.isNotBlank()
     val topBarTitle = when {
@@ -123,11 +170,187 @@ fun EditorScreen(
     }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // ---- 语音相关：使用 EditorViewModel 管理状态 ----
     val editorViewModel: EditorViewModel = viewModel()
     val sttUiState by editorViewModel.uiState.collectAsState()
-
+    
+    // ---- 附件相关：文件处理和存储 ----
+    // Helper function to copy file to app's internal storage
+    fun copyFileToInternalStorage(uri: Uri, fileName: String): File? {
+        return try {
+            val contentResolver: ContentResolver = context.contentResolver
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            val appDir = File(context.filesDir, "attachments")
+            if (!appDir.exists()) {
+                appDir.mkdirs()
+            }
+            val outputFile = File(appDir, fileName)
+            inputStream?.use { input ->
+                FileOutputStream(outputFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            outputFile
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    // Helper function to get file info from URI
+    fun getFileInfoFromUri(uri: Uri): Pair<String, Long>? {
+        return try {
+            val contentResolver: ContentResolver = context.contentResolver
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    val fileName = if (nameIndex >= 0) it.getString(nameIndex) else "unknown"
+                    val fileSize = if (sizeIndex >= 0) it.getLong(sizeIndex) else 0L
+                    Pair(fileName, fileSize)
+                } else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    // Camera photo file
+    val cameraPhotoFile = remember {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", JavaLocale.getDefault()).format(Date())
+        val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        File.createTempFile(
+            "IMG_${timeStamp}_",
+            ".jpg",
+            storageDir
+        )
+    }
+    
+    val cameraUri = remember {
+        androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            cameraPhotoFile
+        )
+    }
+    
+    // Camera launcher (must be defined before permission launcher)
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            val fileName = cameraPhotoFile.name
+            val fileSize = cameraPhotoFile.length()
+            val attachment = com.example.lattice.domain.model.Attachment(
+                filePath = cameraPhotoFile.absolutePath,
+                fileName = fileName,
+                fileType = com.example.lattice.domain.model.AttachmentType.IMAGE,
+                fileSize = fileSize
+            )
+            attachments.add(attachment)
+            uploadSuccessMessage = "Upload successful: $fileName"
+            showUploadSuccess = true
+            scope.launch {
+                delay(3000)
+                showUploadSuccess = false
+            }
+        }
+    }
+    
+    // Camera permission launcher
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted, launch camera
+            cameraLauncher.launch(cameraUri)
+        } else {
+            // Permission denied, show message or handle gracefully
+            uploadSuccessMessage = "Camera permission is required to take photos"
+            showUploadSuccess = true
+            scope.launch {
+                delay(3000)
+                showUploadSuccess = false
+            }
+        }
+    }
+    
+    // Function to launch camera with permission check
+    fun launchCamera() {
+        when {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                // Permission already granted, launch camera directly
+                cameraLauncher.launch(cameraUri)
+            }
+            else -> {
+                // Request permission
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+    
+    // Image picker launcher (Album)
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let {
+            val fileInfo = getFileInfoFromUri(it)
+            val fileName = fileInfo?.first ?: "image_${System.currentTimeMillis()}.jpg"
+            val fileSize = fileInfo?.second
+            val copiedFile = copyFileToInternalStorage(it, fileName)
+            copiedFile?.let { file ->
+                val attachment = com.example.lattice.domain.model.Attachment(
+                    filePath = file.absolutePath,
+                    fileName = fileName,
+                    fileType = com.example.lattice.domain.model.AttachmentType.IMAGE,
+                    fileSize = fileSize
+                )
+                attachments.add(attachment)
+                uploadSuccessMessage = "Upload successful: $fileName"
+                showUploadSuccess = true
+                scope.launch {
+                    kotlinx.coroutines.delay(3000)
+                    showUploadSuccess = false
+                }
+            }
+        }
+    }
+    
+    // File picker launcher (for PDF/DOC)
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val fileInfo = getFileInfoFromUri(it)
+            val originalFileName = fileInfo?.first ?: "file_${System.currentTimeMillis()}"
+            val fileSize = fileInfo?.second
+            val extension = originalFileName.substringAfterLast('.', "").lowercase()
+            val fileType = when (extension) {
+                "pdf" -> com.example.lattice.domain.model.AttachmentType.PDF
+                "doc", "docx" -> com.example.lattice.domain.model.AttachmentType.DOC
+                else -> com.example.lattice.domain.model.AttachmentType.OTHER
+            }
+            val copiedFile = copyFileToInternalStorage(it, originalFileName)
+            copiedFile?.let { file ->
+                val attachment = com.example.lattice.domain.model.Attachment(
+                    filePath = file.absolutePath,
+                    fileName = originalFileName,
+                    fileType = fileType,
+                    fileSize = fileSize
+                )
+                attachments.add(attachment)
+                uploadSuccessMessage = "Upload successful: $originalFileName"
+                showUploadSuccess = true
+                scope.launch {
+                    kotlinx.coroutines.delay(3000)
+                    showUploadSuccess = false
+                }
+            }
+        }
+    }
+    
     val isRecording = sttUiState.isRecording
     val isTranscribing = sttUiState.isTranscribing
     val speechError = sttUiState.error
@@ -265,7 +488,7 @@ fun EditorScreen(
                                 timeFormatter
                             )
                             // ✅ 只触发保存事件，由外部决定是否导航返回
-                            onSave(title, description, selectedPriority, timePoint)
+                            onSave(title, description, selectedPriority, timePoint, attachments)
                         }
                     }
                 ),
@@ -408,6 +631,35 @@ fun EditorScreen(
                 }
             }
 
+            // Attachments
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Attachments", style = MaterialTheme.typography.titleMedium)
+                
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { uploadOptionsOpen = true }) {
+                        Icon(Icons.Default.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Upload")
+                    }
+                    
+                    if (attachments.isNotEmpty()) {
+                        TextButton(onClick = { attachmentPreviewOpen = true }) {
+                            Text("Preview Attachment")
+                        }
+                    }
+                }
+                
+                // Upload success message
+                if (showUploadSuccess && uploadSuccessMessage != null) {
+                    Text(
+                        text = uploadSuccessMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
             // Bottom buttons
             Row(
                 Modifier.fillMaxWidth(),
@@ -429,7 +681,7 @@ fun EditorScreen(
                                 timeFormatter
                             )
                             // ✅ 同样只负责发出保存事件
-                            onSave(title, description, selectedPriority, timePoint)
+                            onSave(title, description, selectedPriority, timePoint, attachments)
                         }
                     },
                     enabled = title.isNotBlank(),
@@ -460,6 +712,38 @@ fun EditorScreen(
                 timeText = time?.format(timeFormatter) ?: ""
                 zoneIdText = zoneId.id
                 schedulePickerOpen = false
+            }
+        )
+    }
+    
+    // Upload options bottom sheet
+    if (uploadOptionsOpen) {
+        UploadOptionsBottomSheet(
+            onDismiss = { uploadOptionsOpen = false },
+            onCameraClick = {
+                uploadOptionsOpen = false
+                launchCamera()
+            },
+            onAlbumClick = {
+                uploadOptionsOpen = false
+                imagePickerLauncher.launch(
+                    PickVisualMediaRequest(PickVisualMedia.ImageOnly)
+                )
+            },
+            onFileClick = {
+                uploadOptionsOpen = false
+                filePickerLauncher.launch("*/*")
+            }
+        )
+    }
+    
+    // Attachment preview bottom sheet
+    if (attachmentPreviewOpen) {
+        AttachmentBottomSheet(
+            attachments = attachments,
+            onDismiss = { attachmentPreviewOpen = false },
+            onDelete = { attachmentId ->
+                attachments.removeAll { it.id == attachmentId }
             }
         )
     }
@@ -550,7 +834,7 @@ private fun ScheduleBottomSheet(
                 TimePicker(state = timeState)
                 
                 // Divider
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 
                 // Time Zone Selection Section
                 Text(
@@ -681,8 +965,273 @@ private fun priorityColor(priority: Priority): Color = when (priority) {
     Priority.None -> MaterialTheme.colorScheme.outline
 }
 
-/**
- * 辅助：TimePoint 上的时间格式（如果你原来有这个扩展函数，可以删掉这里）
- */
-private fun TimePoint.formattedTime(): String? =
-    this.time?.format(DateTimeFormatter.ofPattern("HH:mm"))
+
+// ----------------- Upload Options Bottom Sheet -----------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UploadOptionsBottomSheet(
+    onDismiss: () -> Unit,
+    onCameraClick: () -> Unit,
+    onAlbumClick: () -> Unit,
+    onFileClick: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    
+    LaunchedEffect(Unit) {
+        if (!sheetState.isVisible) sheetState.show()
+    }
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Upload Attachment", style = MaterialTheme.typography.titleLarge)
+            
+            HorizontalDivider()
+            
+            // Camera option
+            ListItem(
+                headlineContent = { Text("Camera") },
+                leadingContent = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = rememberRipple(),
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                            }
+                            onCameraClick()
+                        }
+                    ),
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+            
+            // Album option
+            ListItem(
+                headlineContent = { Text("Album") },
+                leadingContent = { Icon(Icons.Default.Image, contentDescription = null) },
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = rememberRipple(),
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                            }
+                            onAlbumClick()
+                        }
+                    ),
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+            
+            // File option
+            ListItem(
+                headlineContent = { Text("File") },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null) },
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = rememberRipple(),
+                        onClick = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                            }
+                            onFileClick()
+                        }
+                    ),
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachmentBottomSheet(
+    attachments: List<com.example.lattice.domain.model.Attachment>,
+    onDismiss: () -> Unit,
+    onDelete: (String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val contentScroll = rememberScrollState()
+    
+    LaunchedEffect(Unit) {
+        if (!sheetState.isVisible) sheetState.show()
+    }
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 600.dp)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .verticalScroll(contentScroll),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Attachments", style = MaterialTheme.typography.titleLarge)
+            
+            HorizontalDivider()
+            
+            if (attachments.isEmpty()) {
+                Text(
+                    "No attachments",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                attachments.forEach { attachment ->
+                    AttachmentPreviewItem(
+                        attachment = attachment,
+                        onDelete = { onDelete(attachment.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentPreviewItem(
+    attachment: com.example.lattice.domain.model.Attachment,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = attachment.fileName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                
+                // Preview based on file type
+                when (attachment.fileType) {
+                    com.example.lattice.domain.model.AttachmentType.IMAGE -> {
+                        val file = File(attachment.filePath)
+                        if (file.exists()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    ImageRequest.Builder(context)
+                                        .data(file)
+                                        .build()
+                                ),
+                                contentDescription = attachment.fileName,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                "File not found",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    com.example.lattice.domain.model.AttachmentType.PDF,
+                    com.example.lattice.domain.model.AttachmentType.DOC -> {
+                        // For PDF/DOC, show first page preview (simplified - just show file info)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = attachment.fileName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                if (attachment.fileSize != null) {
+                                    Text(
+                                        text = formatFileSize(attachment.fileSize),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        Text(
+                            "Preview not available",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${bytes / (1024 * 1024)} MB"
+    }
+}

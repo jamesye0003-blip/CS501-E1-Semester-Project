@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.lattice.data.DefaultTaskRepository
+import com.example.lattice.domain.model.Attachment
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
@@ -49,7 +50,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         description: String,
         priority: Priority = Priority.None,
         time: TimePoint? = null,
-        parentId: String? = null
+        parentId: String? = null,
+        attachments: List<Attachment> = emptyList()
     ) {
         val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
 
@@ -60,7 +62,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             dueAt = dueAt,
             hasSpecificTime = hasSpecificTime,
             sourceTimeZoneId = sourceTimeZoneId,
-            parentId = parentId
+            parentId = parentId,
+            attachments = attachments
         )
         saveNow()
     }
@@ -80,7 +83,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         title: String,
         description: String,
         priority: Priority = Priority.None,
-        time: TimePoint? = null
+        time: TimePoint? = null,
+        attachments: List<Attachment> = emptyList()
     ) {
         val (dueAt, hasSpecificTime, sourceTimeZoneId) = time.toTaskTimeFields()
 
@@ -92,7 +96,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                     priority = priority,
                     dueAt = dueAt,
                     hasSpecificTime = hasSpecificTime,
-                    sourceTimeZoneId = sourceTimeZoneId
+                    sourceTimeZoneId = sourceTimeZoneId,
+                    attachments = attachments
                 )
             } else {
                 task

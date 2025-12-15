@@ -71,7 +71,8 @@ data class Task(
     val sourceTimeZoneId: String? = null,  // Source time zone at creation (e.g., "Asia/Shanghai"). DB column: source_time_zone.
     val priority: Priority = Priority.None,
     val done: Boolean = false,
-    val parentId: String? = null
+    val parentId: String? = null,
+    val attachments: List<Attachment> = emptyList()  // List of attachments
 ) {
     /**
      * Compatibility: derived time property rebuilt from dueAt/hasSpecificTime/sourceTimeZoneId.

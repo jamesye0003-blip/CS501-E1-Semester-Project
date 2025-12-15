@@ -51,6 +51,8 @@ data class TaskEntity(
     val dueAt: Long? = null,                // Absolute deadline UTC millis; null if unset.
     val hasSpecificTime: Boolean = false,   // Whether time-of-day is present (true) or all-day (false).
     val sourceTimeZoneId: String? = null,   // Source time zone id when created.
+    /* Attachment attributes fields */
+    val attachments: List<com.example.lattice.domain.model.Attachment>? = null,  // List of attachments (stored as JSON)
     /* Status attributes fields */
     val isDone: Boolean = false,
     val isPostponed: Boolean = false,

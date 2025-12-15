@@ -39,7 +39,8 @@ object TaskMapper {
             updatedAt = now,
             lastSyncedAt = null,  // Will be set after sync
             isDeleted = false,
-            syncStatus = if (isNew) TaskSyncStatus.CREATED else TaskSyncStatus.UPDATED
+            syncStatus = if (isNew) TaskSyncStatus.CREATED else TaskSyncStatus.UPDATED,
+            attachments = task.attachments.takeIf { it.isNotEmpty() }
         )
     }
     
@@ -59,7 +60,8 @@ object TaskMapper {
             parentId = entity.parentId,
             dueAt = entity.dueAt?.let { Instant.ofEpochMilli(it) },
             hasSpecificTime = entity.hasSpecificTime,
-            sourceTimeZoneId = entity.sourceTimeZoneId
+            sourceTimeZoneId = entity.sourceTimeZoneId,
+            attachments = entity.attachments ?: emptyList()
         )
     }
     

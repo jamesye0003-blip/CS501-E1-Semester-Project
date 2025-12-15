@@ -14,6 +14,7 @@ import com.example.lattice.ui.screens.LoginScreen
 import com.example.lattice.ui.screens.RegisterScreen
 import com.example.lattice.ui.screens.TaskListScreen
 import com.example.lattice.ui.screens.UserProfileScreen
+import com.example.lattice.domain.model.Attachment
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.toTimePoint
 import com.example.lattice.viewModel.AuthViewModel
@@ -115,18 +116,20 @@ fun AppNavHost(
                     initialDescription = editing?.description ?: "",
                     initialPriority = editing?.priority ?: Priority.None,
                     initialTime = editing?.toTimePoint(),
+                    initialAttachments = editing?.attachments ?: emptyList(),
                     primaryLabel = if (editing != null) "Update" else "Save",
                     parentId = parentId,
                     fromBottomNav = fromBottomNav,
                     onBack = { navController.popBackStack() },
-                    onSave = { title, description, priority, time ->
+                    onSave = { title, description, priority, time, attachments ->
                         if (editing != null) {
                             taskViewModel.updateTask(
                                 id = editing.id,
                                 title = title,
                                 description = description,
                                 priority = priority,
-                                time = time
+                                time = time,
+                                attachments = attachments
                             )
                         } else {
                             taskViewModel.addTask(
@@ -134,7 +137,8 @@ fun AppNavHost(
                                 description = description,
                                 priority = priority,
                                 time = time,
-                                parentId = parentId
+                                parentId = parentId,
+                                attachments = attachments
                             )
                         }
                         navController.popBackStack()
