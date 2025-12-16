@@ -161,8 +161,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         // Update isPostponed status in database
         if (postponedIds.isNotEmpty()) {
             viewModelScope.launch {
-                val defaultRepo = repo as? com.example.lattice.data.DefaultTaskRepository
-                defaultRepo?.updatePostponedStatus(postponedIds, isPostponed = true)
+                repo.updatePostponedStatus(postponedIds, isPostponed = true)
             }
         }
     }

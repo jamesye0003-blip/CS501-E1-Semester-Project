@@ -5,6 +5,8 @@ import com.example.lattice.data.local.room.dao.TaskDao
 import com.example.lattice.data.local.room.dao.UserDao
 import com.example.lattice.data.local.room.entity.TaskEntity
 import com.example.lattice.data.local.room.entity.TaskSyncStatus
+import com.example.lattice.domain.model.Attachment
+import com.example.lattice.domain.model.AttachmentType
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,9 +54,15 @@ class FirebaseTaskSyncManager(
      * First pulls remote updates (cursor-based), then pushes local dirty tasks to remote.
      * 
      * @param localUserId 本地用户 ID / Local user ID
+     * @param getDirtyTasks 获取脏任务的函数，如果为 null 则使用默认方式 / Function to get dirty tasks, null to use default
+     * @param markSynced 标记任务为已同步的函数，如果为 null 则使用默认方式 / Function to mark tasks as synced, null to use default
      * @return 同步结果 / Sync result
      */
-    suspend fun sync(localUserId: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun sync(
+        localUserId: String,
+        getDirtyTasks: (suspend (String) -> List<TaskEntity>)? = null,
+        markSynced: (suspend (List<TaskEntity>, Long) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val user = userDao.getUserById(localUserId)
                 ?: error("Local user not found: $localUserId")
@@ -135,7 +143,9 @@ class FirebaseTaskSyncManager(
             }
 
             // 2) Push: batch push local dirty tasks to remote
-            val dirty = taskDao.getDirtyTasksByUserId(localUserId)
+            val dirty = getDirtyTasks?.invoke(localUserId) 
+                ?: taskDao.getDirtyTasksByUserId(localUserId)
+            
             if (dirty.isNotEmpty()) {
                 val now = System.currentTimeMillis()
 
@@ -152,8 +162,13 @@ class FirebaseTaskSyncManager(
                     }
                     batch.commit().await()
 
-                    // Mark tasks as SYNCED locally (use now for lastSyncedAt)
-                    taskDao.markTasksSynced(chunk.map { it.id }, now)
+                    // Mark tasks as SYNCED locally
+                    if (markSynced != null) {
+                        markSynced(chunk, now)
+                    } else {
+                        // Default: use markTasksSynced
+                        taskDao.markTasksSynced(chunk.map { it.id }, now)
+                    }
                 }
             }
         }
@@ -191,10 +206,24 @@ class FirebaseTaskSyncManager(
         val parentId = map["parentId"] as? String
         val isDeleted = map["isDeleted"] as? Boolean ?: false
 
-        // Attachments: keep field but allow empty to avoid breaking current Room structure
-        // If you want to sync attachment metadata, refine this later
-        @Suppress("UNCHECKED_CAST")
-        val attachments = emptyList<com.example.lattice.domain.model.Attachment>()
+        // Attachments: parse from remote data if present
+        val attachments = (map["attachments"] as? List<*>)?.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val id = m["id"] as? String ?: return@mapNotNull null
+            val filePath = m["filePath"] as? String ?: return@mapNotNull null
+            val fileName = m["fileName"] as? String ?: return@mapNotNull null
+            val fileTypeStr = m["fileType"] as? String ?: AttachmentType.OTHER.name
+            val mimeType = m["mimeType"] as? String
+            val fileSize = (m["fileSize"] as? Number)?.toLong()
+            Attachment(
+                id = id,
+                filePath = filePath,
+                fileName = fileName,
+                fileType = runCatching { AttachmentType.valueOf(fileTypeStr) }.getOrDefault(AttachmentType.OTHER),
+                mimeType = mimeType,
+                fileSize = fileSize
+            )
+        } ?: emptyList()
 
         return TaskEntity(
             id = id,
@@ -229,9 +258,11 @@ class FirebaseTaskSyncManager(
      * @param now 当前时间戳，用于更新 updatedAt / Current timestamp for updating updatedAt
      * @return Firestore 文档数据映射 / Firestore document data map
      */
-    private fun entityToRemoteMap(t: TaskEntity, now: Long): Map<String, Any?> {
+    internal fun entityToRemoteMap(t: TaskEntity, now: Long): Map<String, Any?> {
         // Refresh updatedAt whenever pushing (for incremental cursor)
         val base = mutableMapOf<String, Any?>(
+            "id" to t.id,
+            "parentId" to t.parentId,
             "title" to t.title,
             "description" to t.description,
             "priority" to t.priority,
@@ -244,10 +275,19 @@ class FirebaseTaskSyncManager(
             "isPostponed" to t.isPostponed,
             "isCancelled" to t.isCancelled,
 
-            "parentId" to t.parentId,
             "isDeleted" to t.isDeleted,
 
-            "updatedAt" to now
+            "updatedAt" to now,
+            "attachments" to (t.attachments ?: emptyList()).map { att ->
+                mapOf(
+                    "id" to att.id,
+                    "filePath" to att.filePath,
+                    "fileName" to att.fileName,
+                    "fileType" to att.fileType.name,
+                    "mimeType" to att.mimeType,
+                    "fileSize" to att.fileSize
+                )
+            }
         )
 
         // CREATED: supplement createdAt (remote can write once, but writing here won't harm)

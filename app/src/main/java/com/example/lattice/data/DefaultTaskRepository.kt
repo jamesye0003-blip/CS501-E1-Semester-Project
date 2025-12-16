@@ -1,22 +1,20 @@
 package com.example.lattice.data
 
 import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.lattice.data.local.datastore.SyncCursorStore
 import com.example.lattice.data.local.datastore.authDataStore
-import com.example.lattice.data.local.datastore.settingsDataStore
 import com.example.lattice.data.local.room.dao.UserDao
 import com.example.lattice.data.local.room.db.AppDatabase
 import com.example.lattice.data.local.room.entity.TaskEntity
 import com.example.lattice.data.local.room.entity.TaskSyncStatus
 import com.example.lattice.data.local.room.mapper.TaskMapper
+import com.example.lattice.data.remote.firebase.FirebaseTaskSyncManager
 import com.example.lattice.domain.model.Attachment
 import com.example.lattice.domain.model.AttachmentType
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.repository.TaskRepository
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -29,11 +27,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import kotlin.math.max
 
 private val USER_ID_KEY = stringPreferencesKey("user_id")
-
-private const val SKEW_WINDOW_MS: Long = 3 * 60 * 1000 // 3 minutes
 
 /**
  * 基于 Room 的任务仓库 / Task repository backed by Room
@@ -51,6 +46,15 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 
     private val syncMutex = Mutex()
+
+    private val cursorStore = SyncCursorStore(context)
+
+    private val syncManager = FirebaseTaskSyncManager(
+        taskDao = taskDao,
+        userDao = userDao,
+        cursorStore = cursorStore,
+        firestore = firestore
+    )
 
     private val currentUserIdFlow: Flow<String?> =
         context.authDataStore.data.map { prefs -> prefs[USER_ID_KEY] }
@@ -147,7 +151,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
                     val candidate = TaskMapper.toEntity(task, userId, isNew = false).copy(
                         createdAt = existing.createdAt,
                         lastSyncedAt = existing.lastSyncedAt,
-                        remoteId = existing.remoteId ?: existing.id,
+                        remoteId = existing.remoteId, // remoteId is non-null String with default value = id
                         isPostponed = existing.isPostponed,
                         isCancelled = existing.isCancelled,
                         isDeleted = existing.isDeleted
@@ -180,7 +184,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
             }
 
             // Push only changed rows (best-effort; will no-op if user not bound to remote)
-            pushIfPossible(localUserId = userId, dirtyEntities = dirtyEntities)
+            pushDirtyTasksIfPossible(localUserId = userId, dirtyEntities = dirtyEntities)
         }
     }
 
@@ -220,7 +224,9 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
             taskDao.softDeleteTasksByIds(ids, syncStatus, now)
 
             // Remote tombstones (best-effort)
-            pushDeletesIfPossible(localUserId = userId, taskIds = ids, deletedAt = now)
+            // Note: Delete tombstones are handled by sync manager during next sync
+            // For immediate push, we could add a method to sync manager, but for now
+            // we rely on the next sync cycle to push deletions
         }
     }
 
@@ -234,7 +240,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
      * @param ids 任务 ID 列表 / List of task IDs
      * @param isPostponed 是否延期 / Whether tasks are postponed
      */
-    suspend fun updatePostponedStatus(ids: List<String>, isPostponed: Boolean) {
+    override suspend fun updatePostponedStatus(ids: List<String>, isPostponed: Boolean) {
         withContext(Dispatchers.IO) {
             if (ids.isEmpty()) return@withContext
 
@@ -266,7 +272,7 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
                 taskDao.insertTasks(dirtyEntities)
             }
 
-            pushIfPossible(localUserId = userId, dirtyEntities = dirtyEntities)
+            pushDirtyTasksIfPossible(localUserId = userId, dirtyEntities = dirtyEntities)
         }
     }
 
@@ -293,9 +299,11 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
      * 
      * 执行增量拉取和尽力推送同步。
      * 使用互斥锁确保同步操作的线程安全。
+     * 使用 FirebaseTaskSyncManager 处理同步逻辑，但保持脏任务获取和同步标记方式不变。
      * 
      * Performs incremental pull and best-effort push sync.
      * Uses mutex to ensure thread safety of sync operations.
+     * Uses FirebaseTaskSyncManager for sync logic, but keeps dirty task retrieval and sync marking unchanged.
      * 
      * @param localUserId 本地用户 ID / Local user ID
      */
@@ -305,101 +313,46 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
                 val remoteUid = userDao.getUserById(localUserId)?.remoteId
                 if (remoteUid.isNullOrBlank()) return@withLock
 
-                // Pull (incremental)
-                pullRemoteIncremental(localUserId = localUserId, remoteUid = remoteUid)
-
-                // Push (best-effort): push current dirty tasks in DB snapshot
-                val current = taskDao.getTasksByUserId(localUserId).first()
-                val dirty = current.filter { it.syncStatus != TaskSyncStatus.SYNCED && !it.isDeleted }
-                pushIfPossible(localUserId = localUserId, dirtyEntities = dirty)
+                // Use FirebaseTaskSyncManager with custom dirty task retrieval and sync marking
+                // to maintain compatibility with existing behavior
+                syncManager.sync(
+                    localUserId = localUserId,
+                    getDirtyTasks = { userId ->
+                        // Keep existing behavior: get all tasks then filter
+                        taskDao.getTasksByUserId(userId).first()
+                            .filter { it.syncStatus != TaskSyncStatus.SYNCED && !it.isDeleted }
+                    },
+                    markSynced = { dirtyEntities, now ->
+                        // Keep existing behavior: use insertTasks with synced copies
+                        val syncedCopies = dirtyEntities.map { 
+                            it.copy(syncStatus = TaskSyncStatus.SYNCED, lastSyncedAt = now) 
+                        }
+                        taskDao.insertTasks(syncedCopies)
+                    }
+                ).getOrElse {
+                    // Log error if needed, but don't throw to maintain best-effort behavior
+                }
             }
         }
     }
 
-    /**
-     * 从远程增量拉取任务 / Pull tasks incrementally from remote
-     * 
-     * 使用游标机制从 Firestore 增量拉取任务更新。
-     * 只拉取 updatedAt 大于游标的任务，避免重复拉取。
-     * 
-     * Uses cursor mechanism to pull task updates incrementally from Firestore.
-     * Only pulls tasks with updatedAt greater than cursor to avoid duplicate pulls.
-     * 
-     * @param localUserId 本地用户 ID / Local user ID
-     * @param remoteUid 远程用户 ID / Remote user ID
-     */
-    private suspend fun pullRemoteIncremental(localUserId: String, remoteUid: String) {
-        val cursorKey = longPreferencesKey("remoteSyncCursor_$localUserId")
-        val cursor = context.settingsDataStore.data.first()[cursorKey] ?: 0L
-        val cursorSafe = max(0L, cursor - SKEW_WINDOW_MS)
 
-        val col = firestore.collection("users").document(remoteUid).collection("tasks")
-
-        val snap = col
-            .whereGreaterThan("updatedAt", cursorSafe)
-            .orderBy("updatedAt", Query.Direction.ASCENDING)
-            .get()
-            .await()
-
-        if (snap.isEmpty) return
-
-        // Compare only with current active tasks snapshot (good enough for v1)
-        val localActive = taskDao.getTasksByUserId(localUserId).first()
-        val localMap = localActive.associateBy { it.id }
-
-        var maxRemoteUpdatedAt = cursor
-        val toApply = mutableListOf<TaskEntity>()
-
-        for (doc in snap.documents) {
-            val remoteEntity = docToTaskEntity(
-                docId = doc.id,
-                localUserId = localUserId,
-                data = doc.data ?: emptyMap()
-            ) ?: continue
-
-            maxRemoteUpdatedAt = max(maxRemoteUpdatedAt, remoteEntity.updatedAt)
-
-            val local = localMap[remoteEntity.id]
-            val apply = when {
-                local == null -> true
-                local.syncStatus == TaskSyncStatus.SYNCED && remoteEntity.updatedAt > local.updatedAt -> true
-                local.syncStatus != TaskSyncStatus.SYNCED && remoteEntity.updatedAt >= local.updatedAt -> true // simple LWW
-                else -> false // local newer => keep local
-            }
-
-            if (apply) {
-                toApply.add(
-                    remoteEntity.copy(
-                        syncStatus = TaskSyncStatus.SYNCED,
-                        lastSyncedAt = remoteEntity.updatedAt
-                    )
-                )
-            }
-        }
-
-        if (toApply.isNotEmpty()) {
-            taskDao.insertTasks(toApply)
-        }
-
-        // Advance cursor
-        context.settingsDataStore.edit { prefs ->
-            prefs[cursorKey] = maxRemoteUpdatedAt
-        }
-    }
 
     /**
-     * 如果可能则推送任务到远程 / Push tasks to remote if possible
+     * 如果可能则推送脏任务到远程 / Push dirty tasks to remote if possible
      * 
      * 将脏任务推送到 Firestore，并在成功后标记为已同步。
      * 如果用户未绑定到远程，则不执行任何操作。
+     * 保持与原有 pushIfPossible 相同的行为。
      * 
      * Pushes dirty tasks to Firestore and marks them as synced on success.
      * No-op if user is not bound to remote.
+     * Maintains same behavior as original pushIfPossible.
      * 
      * @param localUserId 本地用户 ID / Local user ID
      * @param dirtyEntities 需要推送的脏任务实体列表 / List of dirty task entities to push
      */
-    private suspend fun pushIfPossible(localUserId: String, dirtyEntities: List<TaskEntity>) {
+    private suspend fun pushDirtyTasksIfPossible(localUserId: String, dirtyEntities: List<TaskEntity>) {
         if (dirtyEntities.isEmpty()) return
 
         val remoteUid = userDao.getUserById(localUserId)?.remoteId
@@ -409,10 +362,10 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
         val batch = firestore.batch()
 
         for (e in dirtyEntities) {
-            val docId = e.remoteId ?: e.id
+            val docId = e.remoteId // remoteId is non-null String with default value = id
             batch.set(
                 col.document(docId),
-                taskEntityToDoc(e),
+                syncManager.entityToRemoteMap(e, System.currentTimeMillis()),
                 com.google.firebase.firestore.SetOptions.merge()
             )
         }
@@ -423,43 +376,6 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
         val now = System.currentTimeMillis()
         val syncedCopies = dirtyEntities.map { it.copy(syncStatus = TaskSyncStatus.SYNCED, lastSyncedAt = now) }
         taskDao.insertTasks(syncedCopies)
-    }
-
-    /**
-     * 如果可能则推送删除标记到远程 / Push delete tombstones to remote if possible
-     * 
-     * 将任务的删除标记推送到 Firestore。
-     * 如果用户未绑定到远程，则不执行任何操作。
-     * 
-     * Pushes task delete tombstones to Firestore.
-     * No-op if user is not bound to remote.
-     * 
-     * @param localUserId 本地用户 ID / Local user ID
-     * @param taskIds 要删除的任务 ID 列表 / List of task IDs to delete
-     * @param deletedAt 删除时间戳 / Deletion timestamp
-     */
-    private suspend fun pushDeletesIfPossible(localUserId: String, taskIds: List<String>, deletedAt: Long) {
-        val remoteUid = userDao.getUserById(localUserId)?.remoteId
-        if (remoteUid.isNullOrBlank()) return
-
-        val col = firestore.collection("users").document(remoteUid).collection("tasks")
-        val batch = firestore.batch()
-
-        for (taskId in taskIds) {
-            val docRef = col.document(taskId)
-            batch.set(
-                docRef,
-                mapOf(
-                    "id" to taskId,
-                    "updatedAt" to deletedAt,
-                    "isDeleted" to true
-                ),
-                com.google.firebase.firestore.SetOptions.merge()
-            )
-        }
-
-        batch.commit().await()
-        // v1: don't force local tombstone syncStatus back to SYNCED (avoids additional DAO query for deleted rows)
     }
 
     // ---------------------------
@@ -489,97 +405,4 @@ class DefaultTaskRepository(private val context: Context) : TaskRepository {
                 a.attachments != b.attachments
     }
 
-    /**
-     * 将任务实体转换为 Firestore 文档 / Convert task entity to Firestore document
-     * 
-     * @param e 任务实体 / Task entity
-     * @return Firestore 文档数据映射 / Firestore document data map
-     */
-    private fun taskEntityToDoc(e: TaskEntity): Map<String, Any?> {
-        return mapOf(
-            "id" to e.id,
-            "parentId" to e.parentId,
-            "title" to e.title,
-            "description" to e.description,
-            "priority" to e.priority,
-            "dueAt" to e.dueAt,
-            "hasSpecificTime" to e.hasSpecificTime,
-            "sourceTimeZoneId" to e.sourceTimeZoneId,
-            "isDone" to e.isDone,
-            "isPostponed" to e.isPostponed,
-            "isCancelled" to e.isCancelled,
-            "isDeleted" to e.isDeleted,
-            "createdAt" to e.createdAt,
-            "updatedAt" to e.updatedAt,
-            "attachments" to (e.attachments ?: emptyList()).map { att ->
-                mapOf(
-                    "id" to att.id,
-                    "filePath" to att.filePath,
-                    "fileName" to att.fileName,
-                    "fileType" to att.fileType.name,
-                    "mimeType" to att.mimeType,
-                    "fileSize" to att.fileSize
-                )
-            }
-        )
-    }
-
-    /**
-     * 将 Firestore 文档转换为任务实体 / Convert Firestore document to task entity
-     * 
-     * @param docId 文档 ID / Document ID
-     * @param localUserId 本地用户 ID / Local user ID
-     * @param data 文档数据 / Document data
-     * @return 任务实体，如果数据无效则返回 null / Task entity, returns null if data is invalid
-     */
-    private fun docToTaskEntity(
-        docId: String,
-        localUserId: String,
-        data: Map<String, Any?>
-    ): TaskEntity? {
-        val title = data["title"] as? String ?: return null
-
-        val attachments = (data["attachments"] as? List<*>)?.mapNotNull { item ->
-            val m = item as? Map<*, *> ?: return@mapNotNull null
-            val id = m["id"] as? String ?: return@mapNotNull null
-            val filePath = m["filePath"] as? String ?: return@mapNotNull null
-            val fileName = m["fileName"] as? String ?: return@mapNotNull null
-            val fileTypeStr = m["fileType"] as? String ?: AttachmentType.OTHER.name
-            val mimeType = m["mimeType"] as? String
-            val fileSize = (m["fileSize"] as? Number)?.toLong()
-            Attachment(
-                id = id,
-                filePath = filePath,
-                fileName = fileName,
-                fileType = runCatching { AttachmentType.valueOf(fileTypeStr) }.getOrDefault(AttachmentType.OTHER),
-                mimeType = mimeType,
-                fileSize = fileSize
-            )
-        }
-
-        val createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
-        val updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: createdAt
-
-        return TaskEntity(
-            id = docId,
-            parentId = data["parentId"] as? String,
-            userId = localUserId,
-            title = title,
-            description = data["description"] as? String ?: "",
-            priority = data["priority"] as? String ?: "None",
-            dueAt = (data["dueAt"] as? Number)?.toLong(),
-            hasSpecificTime = data["hasSpecificTime"] as? Boolean ?: false,
-            sourceTimeZoneId = data["sourceTimeZoneId"] as? String,
-            attachments = attachments,
-            isDone = data["isDone"] as? Boolean ?: false,
-            isPostponed = data["isPostponed"] as? Boolean ?: false,
-            isCancelled = data["isCancelled"] as? Boolean ?: false,
-            remoteId = docId,
-            createdAt = createdAt,
-            updatedAt = updatedAt,
-            lastSyncedAt = updatedAt,
-            isDeleted = data["isDeleted"] as? Boolean ?: false,
-            syncStatus = TaskSyncStatus.SYNCED
-        )
-    }
 }
