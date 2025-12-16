@@ -20,6 +20,18 @@ interface TaskRepository {
      */
     suspend fun deleteTasks(ids: List<String>)
 
+    /**
+     * 更新任务的延期状态 / Update postponed status for tasks
+     * 
+     * 更新指定任务的延期状态，并确保其变为"脏"状态以便同步。
+     * 
+     * Update postponed status for specific tasks, and ensure it becomes "dirty" for sync.
+     * 
+     * @param ids 任务 ID 列表 / List of task IDs
+     * @param isPostponed 是否延期 / Whether tasks are postponed
+     */
+    suspend fun updatePostponedStatus(ids: List<String>, isPostponed: Boolean)
+
     suspend fun syncNow(): Result<Unit>
 }
 

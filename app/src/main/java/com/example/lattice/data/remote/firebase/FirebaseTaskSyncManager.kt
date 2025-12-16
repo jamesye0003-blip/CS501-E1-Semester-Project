@@ -5,12 +5,28 @@ import com.example.lattice.data.local.room.dao.TaskDao
 import com.example.lattice.data.local.room.dao.UserDao
 import com.example.lattice.data.local.room.entity.TaskEntity
 import com.example.lattice.data.local.room.entity.TaskSyncStatus
+import com.example.lattice.domain.model.Attachment
+import com.example.lattice.domain.model.AttachmentType
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import kotlin.math.max
 
+/**
+ * Firebase 任务同步管理器 / Firebase task sync manager
+ * 
+ * 负责本地任务与 Firestore 之间的双向同步。
+ * 使用增量拉取（基于游标）和批量推送机制。
+ * 
+ * Manages bidirectional sync between local tasks and Firestore.
+ * Uses incremental pull (cursor-based) and batch push mechanism.
+ * 
+ * @param taskDao 任务数据访问对象 / Task data access object
+ * @param userDao 用户数据访问对象 / User data access object
+ * @param cursorStore 同步游标存储 / Sync cursor store
+ * @param firestore Firestore 实例，默认使用单例 / Firestore instance, defaults to singleton
+ */
 class FirebaseTaskSyncManager(
     private val taskDao: TaskDao,
     private val userDao: UserDao,
@@ -21,21 +37,39 @@ class FirebaseTaskSyncManager(
         private const val USERS = "users"
         private const val TASKS = "tasks"
 
-        // 时钟漂移安全窗口（与你文档一致思路）
+        // Clock skew safety window
         private const val SKEW_WINDOW_MS = 2 * 60 * 1000L
 
-        // Firestore batch 限制 500，留余量
+        // Firestore batch limit is 500, leave margin
         private const val BATCH_LIMIT = 450
     }
 
-    suspend fun sync(localUserId: String): Result<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * 执行同步操作 / Perform sync operation
+     * 
+     * 执行增量拉取和批量推送同步。
+     * 先拉取远程更新（基于游标），然后推送本地脏任务到远程。
+     * 
+     * Performs incremental pull and batch push sync.
+     * First pulls remote updates (cursor-based), then pushes local dirty tasks to remote.
+     * 
+     * @param localUserId 本地用户 ID / Local user ID
+     * @param getDirtyTasks 获取脏任务的函数，如果为 null 则使用默认方式 / Function to get dirty tasks, null to use default
+     * @param markSynced 标记任务为已同步的函数，如果为 null 则使用默认方式 / Function to mark tasks as synced, null to use default
+     * @return 同步结果 / Sync result
+     */
+    suspend fun sync(
+        localUserId: String,
+        getDirtyTasks: (suspend (String) -> List<TaskEntity>)? = null,
+        markSynced: (suspend (List<TaskEntity>, Long) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val user = userDao.getUserById(localUserId)
                 ?: error("Local user not found: $localUserId")
 
             val remoteUid = user.remoteId ?: error("User is not bound to remoteId (Firebase uid)")
 
-            // 1) PULL
+            // 1) Pull: incremental sync from remote
             val cursor = cursorStore.getCursor(localUserId)
             val safeCursor = max(0L, cursor - SKEW_WINDOW_MS)
 
@@ -67,16 +101,16 @@ class FirebaseTaskSyncManager(
 
                 val local = taskDao.getTaskByIdAny(remoteId)
 
-                // 0.5：远端 tombstone、但本地没有 -> 忽略
+                // Remote tombstone but local doesn't exist -> ignore
                 if (local == null && remoteEntity.isDeleted) continue
 
                 if (local == null) {
-                    // 0.6：本地没有且远端未删除 -> 直接落库（SYNCED）
+                    // Local doesn't exist and remote not deleted -> insert directly (SYNCED)
                     taskDao.insertTask(remoteEntity)
                     continue
                 }
 
-                // 冲突：本地 dirty + 远端在 lastSyncedAt 之后有变化
+                // Conflict: local dirty + remote changed after lastSyncedAt
                 val localDirty = local.syncStatus != TaskSyncStatus.SYNCED
                 val remoteChangedSinceLastSync = when (val ls = local.lastSyncedAt) {
                     null -> true
@@ -85,10 +119,10 @@ class FirebaseTaskSyncManager(
 
                 val applyRemote =
                     if (!localDirty) {
-                        // 本地干净：谁 updatedAt 大谁赢
+                        // If local is clean: winner is the one with larger updatedAt
                         remoteUpdatedAt > local.updatedAt
                     } else {
-                        // 本地脏：如果远端没变，就不覆盖本地
+                        // If local is dirty: don't overwrite if remote unchanged
                         if (!remoteChangedSinceLastSync) false
                         else remoteUpdatedAt >= local.updatedAt
                     }
@@ -96,7 +130,7 @@ class FirebaseTaskSyncManager(
                 if (applyRemote) {
                     taskDao.insertTask(
                         remoteEntity.copy(
-                            // 重要：remote 覆盖时，syncStatus 归 SYNCED，lastSyncedAt 对齐 remoteUpdatedAt
+                            // IMPORTANT: when remote overwrites, syncStatus becomes SYNCED, lastSyncedAt aligns with remoteUpdatedAt
                             syncStatus = TaskSyncStatus.SYNCED,
                             lastSyncedAt = remoteUpdatedAt
                         )
@@ -108,8 +142,10 @@ class FirebaseTaskSyncManager(
                 cursorStore.setCursor(localUserId, maxRemoteUpdatedAt)
             }
 
-            // 2) PUSH
-            val dirty = taskDao.getDirtyTasksByUserId(localUserId)
+            // 2) Push: batch push local dirty tasks to remote
+            val dirty = getDirtyTasks?.invoke(localUserId) 
+                ?: taskDao.getDirtyTasksByUserId(localUserId)
+            
             if (dirty.isNotEmpty()) {
                 val now = System.currentTimeMillis()
 
@@ -126,13 +162,28 @@ class FirebaseTaskSyncManager(
                     }
                     batch.commit().await()
 
-                    // 本地批量标记 SYNCED（lastSyncedAt 用 now）
-                    taskDao.markTasksSynced(chunk.map { it.id }, now)
+                    // Mark tasks as SYNCED locally
+                    if (markSynced != null) {
+                        markSynced(chunk, now)
+                    } else {
+                        // Default: use markTasksSynced
+                        taskDao.markTasksSynced(chunk.map { it.id }, now)
+                    }
                 }
             }
         }
     }
 
+    /**
+     * 将远程 Firestore 文档转换为任务实体 / Convert remote Firestore document to task entity
+     * 
+     * @param localUserId 本地用户 ID / Local user ID
+     * @param id 任务 ID / Task ID
+     * @param createdAt 创建时间戳 / Creation timestamp
+     * @param updatedAt 更新时间戳 / Update timestamp
+     * @param map 文档数据映射 / Document data map
+     * @return 任务实体，如果数据无效则返回 null / Task entity, returns null if data is invalid
+     */
     private fun remoteToEntity(
         localUserId: String,
         id: String,
@@ -155,9 +206,24 @@ class FirebaseTaskSyncManager(
         val parentId = map["parentId"] as? String
         val isDeleted = map["isDeleted"] as? Boolean ?: false
 
-        // attachments：为了不破坏你当前 Room 结构，这里保留字段但允许空（如果你希望同步附件元数据，再细化）
-        @Suppress("UNCHECKED_CAST")
-        val attachments = emptyList<com.example.lattice.domain.model.Attachment>()
+        // Attachments: parse from remote data if present
+        val attachments = (map["attachments"] as? List<*>)?.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val id = m["id"] as? String ?: return@mapNotNull null
+            val filePath = m["filePath"] as? String ?: return@mapNotNull null
+            val fileName = m["fileName"] as? String ?: return@mapNotNull null
+            val fileTypeStr = m["fileType"] as? String ?: AttachmentType.OTHER.name
+            val mimeType = m["mimeType"] as? String
+            val fileSize = (m["fileSize"] as? Number)?.toLong()
+            Attachment(
+                id = id,
+                filePath = filePath,
+                fileName = fileName,
+                fileType = runCatching { AttachmentType.valueOf(fileTypeStr) }.getOrDefault(AttachmentType.OTHER),
+                mimeType = mimeType,
+                fileSize = fileSize
+            )
+        } ?: emptyList()
 
         return TaskEntity(
             id = id,
@@ -185,9 +251,18 @@ class FirebaseTaskSyncManager(
         )
     }
 
-    private fun entityToRemoteMap(t: TaskEntity, now: Long): Map<String, Any?> {
-        // 只要 push，就刷新 updatedAt（用于增量 cursor）
+    /**
+     * 将任务实体转换为远程 Firestore 文档映射 / Convert task entity to remote Firestore document map
+     * 
+     * @param t 任务实体 / Task entity
+     * @param now 当前时间戳，用于更新 updatedAt / Current timestamp for updating updatedAt
+     * @return Firestore 文档数据映射 / Firestore document data map
+     */
+    internal fun entityToRemoteMap(t: TaskEntity, now: Long): Map<String, Any?> {
+        // Refresh updatedAt whenever pushing (for incremental cursor)
         val base = mutableMapOf<String, Any?>(
+            "id" to t.id,
+            "parentId" to t.parentId,
             "title" to t.title,
             "description" to t.description,
             "priority" to t.priority,
@@ -200,13 +275,22 @@ class FirebaseTaskSyncManager(
             "isPostponed" to t.isPostponed,
             "isCancelled" to t.isCancelled,
 
-            "parentId" to t.parentId,
             "isDeleted" to t.isDeleted,
 
-            "updatedAt" to now
+            "updatedAt" to now,
+            "attachments" to (t.attachments ?: emptyList()).map { att ->
+                mapOf(
+                    "id" to att.id,
+                    "filePath" to att.filePath,
+                    "fileName" to att.fileName,
+                    "fileType" to att.fileType.name,
+                    "mimeType" to att.mimeType,
+                    "fileSize" to att.fileSize
+                )
+            }
         )
 
-        // CREATED：补齐 createdAt（远端只写一次也行，但这里写入不会有害）
+        // CREATED: supplement createdAt (remote can write once, but writing here won't harm)
         if (t.syncStatus == TaskSyncStatus.CREATED) {
             base["createdAt"] = t.createdAt
         }

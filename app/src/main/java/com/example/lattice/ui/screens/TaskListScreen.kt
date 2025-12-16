@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,9 +66,13 @@ import com.example.lattice.data.local.datastore.settingsDataStore
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.toTimePoint
+import com.example.lattice.domain.sort.TaskSortOrder
+import com.example.lattice.domain.sort.compareByTime
+import com.example.lattice.domain.sort.compareTasks
+import com.example.lattice.domain.sort.sortTasksByLayer
 import com.example.lattice.domain.time.TaskFilter
-import com.example.lattice.domain.time.TaskSortOrder
 import com.example.lattice.domain.time.filterTasksByDate
+import com.example.lattice.domain.time.getDisplayName
 import com.example.lattice.ui.components.TaskListCard
 import com.example.lattice.ui.components.TaskNode
 import kotlinx.coroutines.delay
@@ -110,10 +115,14 @@ fun TaskListScreen(
     val sortOrderState by sortOrderFlow.collectAsState(initial = TaskSortOrder.Title)
     var sortOrder by remember(sortOrderState) { mutableStateOf(sortOrderState) }
     
+    // Sync UI sortOrder with persisted preference from DataStore.
+    // Update UI state when sortOrderState changes.
     LaunchedEffect(sortOrderState) {
         sortOrder = sortOrderState
     }
     
+    // Persist sortOrder to DataStore when it changes.
+    // Keeps user's sort preference across app restarts.
     LaunchedEffect(sortOrder) {
         scope.launch {
             context.settingsDataStore.edit { prefs ->
@@ -143,7 +152,8 @@ fun TaskListScreen(
     var recentlyCompletedId by remember { mutableStateOf<String?>(null) }
     var showUndo by remember { mutableStateOf(false) }
 
-    // 如果 Undo 追踪的任务被其他逻辑改回未完成，则自动关闭 Undo
+    // Dismiss Undo if tracked task is no longer completed.
+    // Prevents stale Undo actions and ensures UI consistency.
     LaunchedEffect(filteredTasks, recentlyCompletedId) {
         recentlyCompletedId?.let { id ->
             val stillDone = filteredTasks.firstOrNull { it.id == id }?.done == true
@@ -154,6 +164,7 @@ fun TaskListScreen(
         }
     }
 
+    // Auto-dismiss Undo snackbar after 5s if visible and task is tracked.
     LaunchedEffect(showUndo, recentlyCompletedId) {
         if (showUndo && recentlyCompletedId != null) {
             delay(5000)
@@ -200,7 +211,7 @@ fun TaskListScreen(
                                 trailingIcon = { Switch(checked = hideCompleted, onCheckedChange = { checked -> hideCompleted = checked }) },
                                 onClick = { hideCompleted = !hideCompleted }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Sort by Title") },
                                 leadingIcon = { RadioButton(selected = sortOrder == TaskSortOrder.Title, onClick = null) },
@@ -260,6 +271,8 @@ fun TaskListScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp) // Increase spacing
                     ) {
+                        // Show TaskListCard for filtered to-do/root tasks if there are any incomplete root tasks
+                        // (i.e., display the section for active/incomplete tasks if the filtered list is non-empty)
                         if (rootIncomplete.isNotEmpty()) {
                             item {
                                 TaskListCard(
@@ -290,7 +303,9 @@ fun TaskListScreen(
                                 )
                             }
                         }
-
+                        
+                        // Show TaskListCard for filtered completed root tasks if there are any completed root tasks.
+                        // (i.e., display the section for completed tasks if the filtered list contains any completed root-level tasks)
                         if (completedRoots.isNotEmpty()) {
                             item {
                                 TaskListCard(
@@ -352,120 +367,6 @@ fun TaskListScreen(
     }
 }
 
-/**
- * Format the enum name of TaskFilter to user-friendly display text.
- */
-private fun TaskFilter.getDisplayName(): String = when (this) {
-    TaskFilter.Today -> "Today"
-    TaskFilter.Tomorrow -> "Tomorrow"
-    TaskFilter.Next7Days -> "Next 7 Days"
-    TaskFilter.ThisMonth -> "This Month"
-    TaskFilter.All -> "All tasks"
-}
-
-/**
- * Sort tasks by layer recursively according to the specified sort order.
- * Tasks at the same layer are sorted together, and their children are sorted recursively.
- */
-private fun sortTasksByLayer(
-    tasks: List<Task>,
-    allTasks: List<Task>,
-    sortOrder: TaskSortOrder
-): List<Task> {
-    // allTasks is kept for potential future use in sorting logic
-    if (tasks.isEmpty()) return emptyList()
-    
-    // Sort tasks at current layer
-    return tasks.sortedWith { t1, t2 ->
-        compareTasks(t1, t2, sortOrder)
-    }
-}
-
-/**
- * Compare two tasks according to the specified sort order.
- * Returns negative if t1 < t2, positive if t1 > t2, zero if equal.
- */
-private fun compareTasks(
-    t1: Task,
-    t2: Task,
-    sortOrder: TaskSortOrder
-): Int {
-    return when (sortOrder) {
-        TaskSortOrder.Title -> {
-            // Sort by title (dictionary order, A before Z)
-            val titleCompare = t1.title.compareTo(t2.title, ignoreCase = true)
-            if (titleCompare != 0) titleCompare
-            else 0 // If titles are equal, maintain original order
-        }
-        TaskSortOrder.Priority -> {
-            // Sort by priority: High > Medium > Low > None
-            val priorityOrder = mapOf(
-                Priority.High to 0,
-                Priority.Medium to 1,
-                Priority.Low to 2,
-                Priority.None to 3
-            )
-            val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
-            if (priorityCompare != 0) priorityCompare
-            else {
-                // Same priority, compare by time
-                compareByTime(t1, t2)
-            }
-        }
-        TaskSortOrder.Time -> {
-            // Sort by time: tasks with time before tasks without time
-            // Same time, compare by priority
-            // Same time and priority, compare by title
-            val timeCompare = compareByTime(t1, t2)
-            if (timeCompare != 0) timeCompare
-            else {
-                // Same time, compare by priority
-                val priorityOrder = mapOf(
-                    Priority.High to 0,
-                    Priority.Medium to 1,
-                    Priority.Low to 2,
-                    Priority.None to 3
-                )
-                val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
-                if (priorityCompare != 0) priorityCompare
-                else {
-                    // Same time and priority, compare by title
-                    t1.title.compareTo(t2.title, ignoreCase = true)
-                }
-            }
-        }
-    }
-}
-
-/**
- * Compare two tasks by time.
- * Tasks with time come before tasks without time.
- * Returns negative if t1 < t2, positive if t1 > t2, zero if equal.
- */
-private fun compareByTime(t1: Task, t2: Task): Int {
-    val time1 = t1.toTimePoint()
-    val time2 = t2.toTimePoint()
-    
-    // Tasks without time come after tasks with time
-    if (time1 == null && time2 == null) return 0
-    if (time1 == null) return 1 // t1 has no time, t2 has time -> t1 > t2
-    if (time2 == null) return -1 // t1 has time, t2 has no time -> t1 < t2
-    
-    // Both have time, compare by date first
-    val dateCompare = time1.date.compareTo(time2.date)
-    if (dateCompare != 0) return dateCompare
-    
-    // Same date, compare by time if both have specific time
-    if (time1.time != null && time2.time != null) {
-        return time1.time.compareTo(time2.time)
-    }
-    
-    // One or both don't have specific time, but same date
-    if (time1.time != null) return -1 // t1 has time, t2 doesn't -> t1 < t2
-    if (time2.time != null) return 1 // t1 doesn't have time, t2 has -> t1 > t2
-    
-    return 0 // Both have same date but no specific time
-}
 
 @Composable
 private fun AppDrawerContent(

@@ -21,11 +21,17 @@ import retrofit2.http.POST
 import retrofit2.http.Query
 
 /**
- * Google Cloud Speech-to-Text 的 Retrofit API 定义。
- * Retrofit API definition for Google Cloud Speech-to-Text.
+ * Google Cloud Speech-to-Text 的 Retrofit API 定义 / Retrofit API definition for Google Cloud Speech-to-Text
  */
 private interface GoogleSpeechApi {
 
+    /**
+     * 识别语音 / Recognize speech
+     * 
+     * @param apiKey API 密钥 / API key
+     * @param body 识别请求体 / Recognition request body
+     * @return 语音识别响应 / Speech recognition response
+     */
     @POST("v1/speech:recognize")
     suspend fun recognize(
         @Query("key") apiKey: String,
@@ -34,8 +40,7 @@ private interface GoogleSpeechApi {
 }
 
 /**
- * Google STT 请求 / 响应数据模型。
- * Request/response models for Google STT.
+ * Google STT 请求数据模型 / Google STT request data model
  */
 private data class GoogleRecognitionRequest(
     val config: GoogleRecognitionConfig,
@@ -66,21 +71,21 @@ private data class GoogleSpeechAlternative(
 )
 
 /**
- * 使用 Google Cloud Speech-to-Text 的语音转写实现。
- *
+ * 使用 Google Cloud Speech-to-Text 的语音转写实现 / Speech-to-text implementation using Google Cloud Speech-to-Text
+ * 
  * - 负责录音（AudioRecord）
  * - 负责调用 Google STT 接口
  * - 返回领域层的 SpeechResult
- *
- * Speech-to-text implementation using Google Cloud.
- *
- * - records audio
- * - calls Google STT API
- * - returns SpeechResult
+ * 
+ * - Records audio (AudioRecord)
+ * - Calls Google STT API
+ * - Returns domain layer SpeechResult
+ * 
+ * @param context Android 上下文 / Android context
+ * @param apiKey API 密钥，默认使用 companion object 中的值 / API key, defaults to value in companion object
  */
 class GoogleSpeechToTextService(
     private val context: Context,
-    // 提供一个带默认值的 apiKey，方便你在测试阶段直接用 context 构造
     private val apiKey: String = API_KEY
 ) : SpeechToTextService {
 
@@ -90,7 +95,7 @@ class GoogleSpeechToTextService(
 
     private val minBufferSize: Int =
         AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-            .coerceAtLeast(sampleRate) // 避免极小 buffer
+            .coerceAtLeast(sampleRate) // Avoid extremely small buffer
 
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
@@ -104,6 +109,19 @@ class GoogleSpeechToTextService(
         retrofit.create(GoogleSpeechApi::class.java)
     }
 
+    /**
+     * 录音并转写 / Record and transcribe
+     * 
+     * 录音指定时长的音频，然后调用 Google Cloud Speech-to-Text API 进行转写。
+     * 如果权限未授予或录音/转写失败，返回错误结果。
+     * 
+     * Records audio for specified duration, then calls Google Cloud Speech-to-Text API for transcription.
+     * Returns error result if permission not granted or recording/transcription fails.
+     * 
+     * @param seconds 录音时长（秒）/ Recording duration in seconds
+     * @param languageCode 语言代码，例如 "en-US"、"zh-CN" / Language code, e.g., "en-US", "zh-CN"
+     * @return 转写结果 / Transcription result
+     */
     override suspend fun recordAndTranscribe(
         seconds: Int,
         languageCode: String
@@ -161,7 +179,13 @@ class GoogleSpeechToTextService(
     }
 
     /**
-     * Check microphone permission (UI layer should request if missing).
+     * 检查麦克风权限 / Check microphone permission
+     * 
+     * UI 层应在权限缺失时请求权限。
+     * 
+     * UI layer should request permission if missing.
+     * 
+     * @return 是否已授予权限 / Whether permission is granted
      */
     private fun hasRecordPermission(): Boolean =
         ContextCompat.checkSelfPermission(
@@ -170,7 +194,10 @@ class GoogleSpeechToTextService(
         ) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * Record raw PCM via AudioRecord.
+     * 通过 AudioRecord 录制原始 PCM 音频 / Record raw PCM audio via AudioRecord
+     * 
+     * @param seconds 录音时长（秒）/ Recording duration in seconds
+     * @return PCM 音频字节数组 / PCM audio byte array
      */
     private fun recordPcm(seconds: Int): ByteArray {
         val totalBytes = seconds * sampleRate * 2 // 16-bit, mono → 2 bytes per sample
@@ -216,8 +243,13 @@ class GoogleSpeechToTextService(
         private const val BASE_URL = "https://speech.googleapis.com/"
 
         /**
-         * 临时用于测试的 API Key。
-         * Temporary API key for testing; inject from secure source later.
+         * 临时用于测试的 API Key / Temporary API key for testing
+         * 
+         * 注意：此 API Key 不应提交到版本控制系统。
+         * 后续应从安全源注入（如本地配置文件）。
+         * 
+         * Note: This API key should not be committed to version control.
+         * Should be injected from secure source later (e.g., local config file).
          */
         const val API_KEY: String = "AIzaSyBpPtFfa9jYX5fdY6L4S0Wvj3dgt2VQimI"
     }

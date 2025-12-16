@@ -51,7 +51,8 @@ import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.Task
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.model.toTimePoint
-import com.example.lattice.domain.time.TaskSortOrder
+import com.example.lattice.domain.sort.TaskSortOrder
+import com.example.lattice.domain.sort.sortTasksByLayer
 import com.example.lattice.ui.theme.PriorityHigh
 import com.example.lattice.ui.theme.PriorityLow
 import com.example.lattice.ui.theme.PriorityMedium
@@ -73,24 +74,25 @@ fun TaskNode(
     onAddSub: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
-    depth: Int = 0 // 新增：用于控制递归层级样式
+    depth: Int = 0 // Used to control recursive level styling.
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showMaxDepthWarning by remember { mutableStateOf(false) }
 
-    // 过滤并排序子任务
+    // Filter and sort subtasks
     val children = remember(tasks, task.id, showCompleted, sortOrder) {
         val filtered = tasks.filter { it.parentId == task.id && it.done == showCompleted }
         sortTasksByLayer(filtered, tasks, sortOrder)
     }
 
-    // 新增：子任务折叠/展开状态（默认展开）
+    // Subtask expand/collapse state (expanded by default).
     var childrenExpanded by rememberSaveable(task.id) { mutableStateOf(true) }
     
-    // 检查是否达到最大层级（5层，depth从0开始，所以depth >= 4表示第5层）
+    // Check whether the maximum depth is reached (5 levels total; depth starts at 0,
+    // so depth >= 4 indicates the 5th level).
     val isMaxDepth = depth >= 4
 
-    // 为 clickable（旧 Indication 兼容版本）准备的交互对象
+    // Interaction source for clickable (legacy Indication-compatible version).
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
 
@@ -99,37 +101,35 @@ fun TaskNode(
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
-        // 1. 任务卡片主体
-        val surfaceModifier = Modifier
-            .fillMaxWidth()
-            .alpha(if (task.done) 0.5f else 1f)
-            .let { base ->
-                if (canToggleChildren) {
-                    // 关键：使用带 indication 参数的 clickable 重载，避免 PlatformRipple 崩溃
-                    base.clickable(
-                        interactionSource = interactionSource,
-                        indication = indication
-                    ) {
-                        childrenExpanded = !childrenExpanded
-                    }
-                } else {
-                    base
-                }
-            }
-
+        // 1. Task Root Body
         Surface(
-            modifier = surfaceModifier,
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (task.done) 0.5f else 1f)
+                .let { base ->
+                    if (canToggleChildren) {
+                        // Key: use the clickable overload with an explicit indication parameter to avoid PlatformRipple crashes.
+                        base.clickable(
+                            interactionSource = interactionSource,
+                            indication = indication
+                        ) {
+                            childrenExpanded = !childrenExpanded
+                        }
+                    } else {
+                        base
+                    }
+                },
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = if (depth == 0) 2.dp else 0.dp, // 根任务有阴影，子任务扁平
+            tonalElevation = if (depth == 0) 2.dp else 0.dp, // Root tasks have elevation; subtasks are flat.
             shadowElevation = if (depth == 0) 1.dp else 0.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min) // 允许子元素填满高度
+                    .height(IntrinsicSize.Min) // Allow child elements to fill the available height.
             ) {
-                // Priority Indicator Strip (左侧彩色竖条)
+                // Priority Indicator Strip (left vertical colored bar)
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
@@ -141,9 +141,9 @@ fun TaskNode(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp, horizontal = 8.dp),
-                    verticalAlignment = Alignment.Top // 内容顶部对齐，适应长文本
+                    verticalAlignment = Alignment.Top // Align content to the top to better accommodate long text.
                 ) {
-                    // Checkbox
+                    // Checkbox for the task, click to set the task to 'done' status.
                     Checkbox(
                         checked = task.done,
                         onCheckedChange = { onToggleDone(task.id) },
@@ -153,7 +153,7 @@ fun TaskNode(
                         ),
                         modifier = Modifier
                             .size(24.dp)
-                            .padding(top = 2.dp) // 微调位置
+                            .padding(top = 2.dp)
                     )
 
                     Spacer(Modifier.width(12.dp))
@@ -209,7 +209,7 @@ fun TaskNode(
                     Box {
                         IconButton(
                             onClick = { menuExpanded = true },
-                            modifier = Modifier.size(32.dp) // 稍微缩小按钮占用空间
+                            modifier = Modifier.size(32.dp) // Smaller space
                         ) {
                             Icon(
                                 Icons.Default.MoreVert,
@@ -221,12 +221,14 @@ fun TaskNode(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false }
                         ) {
+                            // Menu item to 'add subtask'
                             if (!showCompleted) {
                                 DropdownMenuItem(
                                     text = { Text("Add Subtask") },
                                     leadingIcon = { Icon(Icons.Default.SubdirectoryArrowRight, null) },
                                     onClick = {
                                         menuExpanded = false
+                                        // Show max depth warning if reaching the max depth.
                                         if (isMaxDepth) {
                                             showMaxDepthWarning = true
                                         } else {
@@ -235,11 +237,13 @@ fun TaskNode(
                                     }
                                 )
                             }
+                            // Menu item to 'edit task'
                             DropdownMenuItem(
                                 text = { Text("Edit") },
                                 leadingIcon = { Icon(Icons.Default.Edit, null) },
                                 onClick = { menuExpanded = false; onEdit(task.id) }
                             )
+                            // Menu item to 'delete task'
                             DropdownMenuItem(
                                 text = { Text("Delete") },
                                 leadingIcon = { Icon(Icons.Default.Delete, null) },
@@ -251,17 +255,17 @@ fun TaskNode(
             }
         }
 
-        // 2. 递归渲染子任务（支持折叠）
+        // 2. Recursively render subtasks (with collapse/expand support).
         if (children.isNotEmpty() && childrenExpanded) {
             Row(modifier = Modifier.fillMaxWidth()) {
-                // 左侧缩进 + 视觉引导线
+                // Left indent + visual guide line
                 Box(
                     modifier = Modifier
-                        .width(24.dp) // 缩进宽度
+                        .width(24.dp)
                         .height(IntrinsicSize.Max),
                     contentAlignment = Alignment.CenterEnd
                 ) {
-                    // 灰色竖线，贯穿子任务区域
+                    // Gray vertical line spanning the subtask area
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -270,12 +274,12 @@ fun TaskNode(
                     )
                 }
 
-                // 子任务列表
+                // Subtask list
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Spacer(Modifier.height(8.dp)) // 增加一点顶部间距
+                    Spacer(Modifier.height(8.dp)) // add a little top margin
                     children.forEach { child ->
                         TaskNode(
                             task = child,
@@ -287,7 +291,7 @@ fun TaskNode(
                             onAddSub = onAddSub,
                             onEdit = onEdit,
                             onDelete = onDelete,
-                            depth = depth + 1 // 传递层级
+                            depth = depth + 1 // a deeper layer
                         )
                     }
                 }
@@ -310,86 +314,6 @@ fun TaskNode(
     }
 }
 
-/**
- * Sort tasks by layer recursively according to the specified sort order.
- */
-private fun sortTasksByLayer(
-    tasks: List<Task>,
-    allTasks: List<Task>,
-    sortOrder: TaskSortOrder
-): List<Task> {
-    // allTasks is kept for potential future use in sorting logic
-    if (tasks.isEmpty()) return emptyList()
-    
-    return tasks.sortedWith { t1, t2 ->
-        compareTasks(t1, t2, sortOrder)
-    }
-}
-
-/**
- * Compare two tasks according to the specified sort order.
- */
-private fun compareTasks(
-    t1: Task,
-    t2: Task,
-    sortOrder: TaskSortOrder
-): Int {
-    return when (sortOrder) {
-        TaskSortOrder.Title -> {
-            t1.title.compareTo(t2.title, ignoreCase = true)
-        }
-        TaskSortOrder.Priority -> {
-            val priorityOrder = mapOf(
-                Priority.High to 0,
-                Priority.Medium to 1,
-                Priority.Low to 2,
-                Priority.None to 3
-            )
-            val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
-            if (priorityCompare != 0) priorityCompare
-            else compareByTime(t1, t2)
-        }
-        TaskSortOrder.Time -> {
-            val timeCompare = compareByTime(t1, t2)
-            if (timeCompare != 0) timeCompare
-            else {
-                val priorityOrder = mapOf(
-                    Priority.High to 0,
-                    Priority.Medium to 1,
-                    Priority.Low to 2,
-                    Priority.None to 3
-                )
-                val priorityCompare = (priorityOrder[t1.priority] ?: 3).compareTo(priorityOrder[t2.priority] ?: 3)
-                if (priorityCompare != 0) priorityCompare
-                else t1.title.compareTo(t2.title, ignoreCase = true)
-            }
-        }
-    }
-}
-
-/**
- * Compare two tasks by time.
- */
-private fun compareByTime(t1: Task, t2: Task): Int {
-    val time1 = t1.toTimePoint()
-    val time2 = t2.toTimePoint()
-    
-    if (time1 == null && time2 == null) return 0
-    if (time1 == null) return 1
-    if (time2 == null) return -1
-    
-    val dateCompare = time1.date.compareTo(time2.date)
-    if (dateCompare != 0) return dateCompare
-    
-    if (time1.time != null && time2.time != null) {
-        return time1.time.compareTo(time2.time)
-    }
-    
-    if (time1.time != null) return -1
-    if (time2.time != null) return 1
-    
-    return 0
-}
 
 @Composable
 private fun priorityColor(priority: Priority): Color = when (priority) {

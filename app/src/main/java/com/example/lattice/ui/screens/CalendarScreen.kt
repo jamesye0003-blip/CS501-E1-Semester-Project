@@ -85,10 +85,10 @@ fun CalendarScreen(
     val today = remember { LocalDate.now() }
     var month by rememberSaveable { mutableStateOf(YearMonth.now()) }
 
-    // 默认：不显示已完成任务（可改）
+    // Default: do not show completed tasks (configurable)
     var showCompleted by rememberSaveable { mutableStateOf(false) }
 
-    // 选中某一天 -> 弹窗展示当天任务
+    // Select a day -> show a dialog with that day's tasks
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
 
     val tasksByDate = remember(tasks, showCompleted) {
@@ -107,7 +107,7 @@ fun CalendarScreen(
     }
 
     val weekdayLabels = remember {
-        // Sunday-first (与你示例图一致)
+        // Sunday-first
         listOf(
             DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
             DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY
@@ -253,7 +253,7 @@ private fun CalendarDayCell(
     tasks: List<Task>,
     onClick: () -> Unit
 ) {
-    // 最多显示 2 条任务，多的用 +N
+    // Show at most 2 tasks; display the rest as '+N'
     val preview = tasks.take(2)
     val remaining = tasks.size - preview.size
 
