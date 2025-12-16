@@ -120,34 +120,29 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                 val localPasswordOk =
                     local != null && !local.isDeleted && verifyPassword(password, local.passwordHash)
 
-                // 1) Try Firebase sign-in first (cross-device)
+                // 1) 先尝试本地验证（支持离线 & 快速登录）
+                if (localPasswordOk) {
+                    // 本地用户存在且密码匹配，直接登录
+                    context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = local!!.id }
+                    return@runCatching User(id = local.id, username = local.username, email = local.email)
+                }
+
+                // 2) 本地不存在该用户或密码不匹配，再尝试远程 Firebase 验证
+                //    适用于：首次在本设备登录，或本地数据被清空后的重新登录。
                 val uid = try {
                     val result = firebaseAuth
                         .signInWithEmailAndPassword(internalEmail, password)
                         .await()
                     result.user?.uid ?: error("Firebase uid is null")
                 } catch (e: FirebaseAuthInvalidUserException) {
-                    // Firebase user not found:
-                    // if local user exists & password matches, migrate by creating Firebase account.
-                    if (localPasswordOk) {
-                        val created = firebaseAuth
-                            .createUserWithEmailAndPassword(internalEmail, password)
-                            .await()
-                        created.user?.uid ?: error("Firebase uid is null")
-                    } else {
-                        throw e
-                    }
+                    // 远程没有这个账号：如果本地没有合法用户，就直接抛错
+                    throw e
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
-                    // Wrong password (Firebase). If local matches, allow offline login.
-                    if (localPasswordOk) {
-                        context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = local!!.id }
-                        return@runCatching User(id = local.id, username = local.username, email = local.email)
-                    } else {
-                        throw e
-                    }
+                    // 远程密码错误，且本地也无法通过（因为前面 localPasswordOk 已经为 false）
+                    throw e
                 }
 
-                // 2) Upsert local user, bind remoteId=uid
+                // 3) 远程验证成功：在本地创建或更新用户，并绑定 remoteId = Firebase uid
                 val finalLocal = if (local == null) {
                     val localUserId = UUID.randomUUID().toString()
                     val entity = UserEntity(
@@ -174,7 +169,7 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                     updated
                 }
 
-                // 3) Save session
+                // 4) 保存会话
                 context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = finalLocal.id }
 
                 User(id = finalLocal.id, username = finalLocal.username, email = finalLocal.email)
