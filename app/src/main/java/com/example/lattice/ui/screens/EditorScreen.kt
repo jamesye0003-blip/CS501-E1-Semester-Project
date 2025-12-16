@@ -2,7 +2,6 @@ package com.example.lattice.ui.screens
 
 import android.Manifest
 import android.content.ContentResolver
-import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Environment
@@ -10,27 +9,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
-import androidx.compose.foundation.Image
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -44,46 +27,29 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDefaults
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,10 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -110,21 +73,18 @@ import com.example.lattice.ui.theme.PriorityHigh
 import com.example.lattice.ui.theme.PriorityMedium
 import com.example.lattice.ui.theme.PriorityLow
 import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.util.Locale as JavaLocale
 import java.util.UUID
-import kotlin.math.abs
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.ripple.rememberRipple
-import androidx.compose.material3.ListItem
-import androidx.compose.ui.text.style.TextOverflow
+import com.example.lattice.ui.components.AttachmentBottomSheet
+import com.example.lattice.ui.components.ScheduleBottomSheet
+import com.example.lattice.ui.components.UploadOptionsBottomSheet
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -573,7 +533,12 @@ fun EditorScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Priority.values().forEach { priority ->
                         val isSelected = selectedPriority == priority
-                        val priorityColorValue = priorityColor(priority)
+                        val priorityColorValue = when (priority) {
+                            Priority.High -> PriorityHigh
+                            Priority.Medium -> PriorityMedium
+                            Priority.Low -> PriorityLow
+                            Priority.None -> MaterialTheme.colorScheme.outline
+                        }
                         val interactionSource = remember { MutableInteractionSource() }
                         val indication = LocalIndication.current
                         Surface(
@@ -780,197 +745,6 @@ fun EditorScreen(
     }
 }
 
-// ----------------- 以下辅助组件与之前版本一致，只是略微清理 import -----------------
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ScheduleBottomSheet(
-    initialDate: LocalDate?,
-    initialTime: LocalTime?,
-    initialZoneId: ZoneId,
-    onDismiss: () -> Unit,
-    onConfirm: (LocalDate, LocalTime?, ZoneId) -> Unit
-) {
-    val systemZone = ZoneId.systemDefault()
-    val initialMillis = remember(initialDate) {
-        initialDate?.atStartOfDay(systemZone)?.toInstant()?.toEpochMilli()
-    }
-    val datePickerState =
-        rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-
-    var includeTime by rememberSaveable { mutableStateOf(initialTime != null) }
-    val timeState = rememberTimePickerState(
-        initialHour = initialTime?.hour ?: LocalTime.now().hour,
-        initialMinute = initialTime?.minute ?: LocalTime.now().minute,
-        is24Hour = false
-    )
-
-    var selectedZoneId by rememberSaveable(initialZoneId.id) {
-        mutableStateOf(initialZoneId.id)
-    }
-
-    val contentScroll = rememberScrollState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    
-    // Time zone data
-    val allTimeZones = remember { TimeZoneData.getAllTimeZones() }
-    val selectedZone = remember(selectedZoneId) {
-        runCatching { ZoneId.of(selectedZoneId) }.getOrElse { systemZone }
-    }
-
-    LaunchedEffect(Unit) {
-        if (!sheetState.isVisible) sheetState.show()
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-                .verticalScroll(contentScroll),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text("Pick Schedule", style = MaterialTheme.typography.titleLarge)
-
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false,
-                colors = DatePickerDefaults.colors()
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Include time", style = MaterialTheme.typography.titleMedium)
-                Switch(
-                    checked = includeTime,
-                    onCheckedChange = { includeTime = it }
-                )
-            }
-
-            if (includeTime) {
-                // Time Picker Section
-                Text(
-                    "Time",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                TimePicker(state = timeState)
-                
-                // Divider
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                
-                // Time Zone Selection Section
-                Text(
-                    "Time Zone",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                
-                // Find city name for display
-                val cityName = TimeZoneData.findCityByZoneId(selectedZone) ?: selectedZone.id
-                val now = ZonedDateTime.now(selectedZone)
-                val offset = now.offset
-                val hours = offset.totalSeconds / 3600
-                val minutes = kotlin.math.abs(offset.totalSeconds % 3600) / 60
-                val offsetStr = when {
-                    minutes == 0 -> "UTC${if (hours >= 0) "+" else ""}$hours"
-                    else -> "UTC${if (hours >= 0) "+" else ""}$hours:${minutes.toString().padStart(2, '0')}"
-                }
-                
-                Text(
-                    text = "Selected: $cityName, $offsetStr",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                // Time Zone List
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 300.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    allTimeZones.forEach { timeZoneOption ->
-                        val isSelected = timeZoneOption.zoneId == selectedZone
-                        
-                        TextButton(
-                            onClick = {
-                                selectedZoneId = timeZoneOption.zoneId.id
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = timeZoneOption.displayText,
-                                style = if (isSelected) {
-                                    MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                } else {
-                                    MaterialTheme.typography.bodyMedium
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.heightIn(min = 8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Cancel")
-                }
-                Button(
-                    onClick = {
-                        val selectedMillis =
-                            datePickerState.selectedDateMillis ?: return@Button
-                        val date = Instant.ofEpochMilli(selectedMillis)
-                            .atZone(systemZone)
-                            .toLocalDate()
-                        val zone =
-                            runCatching { ZoneId.of(selectedZoneId) }
-                                .getOrElse { systemZone }
-                        val time = if (includeTime) {
-                            LocalTime.of(timeState.hour, timeState.minute)
-                        } else null
-                        scope.launch {
-                            sheetState.hide()
-                            onConfirm(date, time, zone)
-                        }
-                    },
-                    enabled = datePickerState.selectedDateMillis != null,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("OK")
-                }
-            }
-        }
-    }
-
-}
-
-
 private fun buildTimePoint(
     dateText: String,
     timeText: String,
@@ -988,288 +762,3 @@ private fun buildTimePoint(
     return TimePoint(date = date, time = time, zoneId = zone)
 }
 
-@Composable
-private fun priorityColor(priority: Priority): Color = when (priority) {
-    Priority.High -> PriorityHigh
-    Priority.Medium -> PriorityMedium
-    Priority.Low -> PriorityLow
-    Priority.None -> MaterialTheme.colorScheme.outline
-}
-
-
-// ----------------- Upload Options Bottom Sheet -----------------
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun UploadOptionsBottomSheet(
-    onDismiss: () -> Unit,
-    onCameraClick: () -> Unit,
-    onAlbumClick: () -> Unit,
-    onFileClick: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    
-    LaunchedEffect(Unit) {
-        if (!sheetState.isVisible) sheetState.show()
-    }
-    
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text("Upload Attachment", style = MaterialTheme.typography.titleLarge)
-            
-            HorizontalDivider()
-            
-            // Camera option
-            ListItem(
-                headlineContent = { Text("Camera") },
-                leadingContent = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = rememberRipple(),
-                        onClick = {
-                            scope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                            onCameraClick()
-                        }
-                    ),
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-            
-            // Album option
-            ListItem(
-                headlineContent = { Text("Album") },
-                leadingContent = { Icon(Icons.Default.Image, contentDescription = null) },
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = rememberRipple(),
-                        onClick = {
-                            scope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                            onAlbumClick()
-                        }
-                    ),
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-            
-            // File option
-            ListItem(
-                headlineContent = { Text("File") },
-                leadingContent = { Icon(Icons.AutoMirrored.Filled.InsertDriveFile, contentDescription = null) },
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = rememberRipple(),
-                        onClick = {
-                            scope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                            onFileClick()
-                        }
-                    ),
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AttachmentBottomSheet(
-    attachments: List<com.example.lattice.domain.model.Attachment>,
-    onDismiss: () -> Unit,
-    onDelete: (String) -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    
-    LaunchedEffect(Unit) {
-        if (!sheetState.isVisible) sheetState.show()
-    }
-    
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 600.dp)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Text("Attachments", style = MaterialTheme.typography.titleLarge)
-            }
-            
-            item {
-                HorizontalDivider()
-            }
-            
-            if (attachments.isEmpty()) {
-                item {
-                    Text(
-                        "No attachments",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
-            } else {
-                items(
-                    items = attachments,
-                    key = { it.id }
-                ) { attachment ->
-                    AttachmentPreviewItem(
-                        attachment = attachment,
-                        onDelete = { onDelete(attachment.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AttachmentPreviewItem(
-    attachment: com.example.lattice.domain.model.Attachment,
-    onDelete: () -> Unit
-) {
-    val context = LocalContext.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = attachment.fileName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-                
-                // Preview based on file type
-                when (attachment.fileType) {
-                    com.example.lattice.domain.model.AttachmentType.IMAGE -> {
-                        val file = File(attachment.filePath)
-                        if (file.exists()) {
-                            Image(
-                                painter = rememberAsyncImagePainter(
-                                    ImageRequest.Builder(context)
-                                        .data(file)
-                                        .build()
-                                ),
-                                contentDescription = attachment.fileName,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(16f / 9f),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Text(
-                                "File not found",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                    com.example.lattice.domain.model.AttachmentType.PDF,
-                    com.example.lattice.domain.model.AttachmentType.DOC -> {
-                        // For PDF/DOC, show first page preview (simplified - just show file info)
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(48.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = attachment.fileName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                                attachment.fileSize?.let { size ->
-                                    Text(
-                                        text = formatFileSize(size),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    else -> {
-                        Text(
-                            "Preview not available",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
-    }
-}
