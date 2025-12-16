@@ -7,14 +7,17 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 /**
- * 时间转换工具类。
- * Time conversion utilities.
+ * 时间转换工具类 / Time conversion utilities
  *
  * 核心职责：
  * 1. 将用户输入的日期/时间/时区转换为UTC Instant（存储）
  * 2. 将UTC Instant转换为用户设备时区的日期/时间（展示）
  * 
- * 遵循设计指南：
+ * Core responsibilities:
+ * 1. Convert user-input date/time/timezone into a UTC Instant (for storage).
+ * 2. Convert a UTC Instant into date/time in the user's device timezone (for display).
+ * 
+ * 遵循设计指南 / Follow the design guildlines: 
  * - 数据库存储UTC绝对时刻 / store UTC in DB
  * - 应用层负责时区转换 / app layer does conversions
  * - 全天任务使用当日00:00作为基准点 / all-day uses 00:00 baseline

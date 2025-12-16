@@ -55,7 +55,7 @@ fun RegisterScreen(
 
     val uiState by viewModel.uiState.collectAsState()
 
-    // 实时检查密码匹配
+    // Validate password matching in real time
     val passwordsMatch = password == confirm || confirm.isEmpty()
 
     LaunchedEffect(uiState.isAuthenticated) {
@@ -71,11 +71,11 @@ fun RegisterScreen(
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            // 1. Brand Header (与 LoginScreen 保持一致)
+            // 1. Brand Header (consistent with LoginScreen)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp) // 保持高度一致
+                    .height(280.dp) // Keep the height consistent.
                     .background(MaterialTheme.colorScheme.primary)
                     .padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -90,7 +90,7 @@ fun RegisterScreen(
                         .padding(bottom = 16.dp)
                 )
                 Text(
-                    text = "Join Lattice", // 文案变化
+                    text = "Join Lattice",
                     style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold
@@ -103,14 +103,13 @@ fun RegisterScreen(
             }
 
             // 2. Register Form Card (Overlapping)
-            // 使用 verticalScroll 防止小屏幕下键盘遮挡
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(y = 220.dp) // 稍微上提一点，因为注册表单更长
+                    .offset(y = 220.dp) // Slightly move upward since the registration form is longer
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState()), // Use verticalScroll to prevent the keyboard from obscuring content on small screens
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
@@ -173,7 +172,7 @@ fun RegisterScreen(
                                 .fillMaxWidth()
                                 .padding(bottom = 24.dp),
                             visualTransformation = PasswordVisualTransformation(),
-                            isError = !passwordsMatch, // 错误状态视觉反馈
+                            isError = !passwordsMatch, // Visual feedback for the error state.
                             supportingText = {
                                 if (!passwordsMatch) {
                                     Text("Passwords do not match")
@@ -234,7 +233,7 @@ fun RegisterScreen(
                     }
                 }
 
-                // 底部留白，确保滚动到底部时不贴边
+                // Add bottom spacing to ensure content does not stick to the edge when scrolled to the bottom.
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }

@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
@@ -88,6 +88,9 @@ fun UserProfileScreen(
     var onTimeCompletedCount by remember { mutableStateOf(0) }
     var postponedCompletedCount by remember { mutableStateOf(0) }
 
+    // Update on-time/postponed stats whenever 'tasks' changes.
+    // Loads userId, fetches stats from repository.
+    // Sets both counts for use in the profile stats cards.
     LaunchedEffect(tasks) {
         val userId = withContext(Dispatchers.IO) {
             context.authDataStore.data.first()[stringPreferencesKey("user_id")]
@@ -217,7 +220,7 @@ fun UserProfileScreen(
                     StatCard(
                         label = "Total Tasks",
                         value = totalTasksLifetime.toString(),
-                        icon = Icons.Default.Assignment,
+                        icon = Icons.AutoMirrored.Filled.Assignment,
                         color = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.weight(1f)
                     )
@@ -260,6 +263,7 @@ fun UserProfileScreen(
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
                     Column {
+                        // Dark Mode Toggle
                         ListItem(
                             headlineContent = { Text("Dark Mode") },
                             leadingContent = {
@@ -273,11 +277,12 @@ fun UserProfileScreen(
                             },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                         )
-
+                        
+                        // Daily Review entry
                         ListItem(
                             headlineContent = { Text("Daily Review") },
                             supportingContent = { Text("Postpone unfinished tasks to tomorrow") },
-                            leadingContent = { Icon(Icons.Default.Assignment, null) },
+                            leadingContent = { Icon(Icons.AutoMirrored.Filled.Assignment, null) },
                             modifier = Modifier
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -287,7 +292,7 @@ fun UserProfileScreen(
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                         )
 
-                        // NEW: Sync Now entry (previously missing)
+                        // Sync Now entry (previously missing)
                         ListItem(
                             headlineContent = { Text("Sync Now") },
                             supportingContent = { Text("Upload/download tasks with Firebase") },
@@ -327,7 +332,7 @@ fun UserProfileScreen(
         AlertDialog(
             onDismissRequest = { showSyncDialog = false },
             title = { Text("Sync Now") },
-            text = { Text("Run a full sync with Firebase now?") },
+            text = { Text("Run a full sync with remote Cloud database now?") },
             confirmButton = {
                 TextButton(onClick = {
                     onSyncNow()

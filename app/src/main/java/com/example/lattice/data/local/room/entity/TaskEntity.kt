@@ -41,13 +41,13 @@ enum class TaskSyncStatus { SYNCED, CREATED, UPDATED, DELETED }
 data class TaskEntity(
     @PrimaryKey
     val id: String,                       // localTaskId (UUID) = remote docId
-    val parentId: String? = null,         // 树结构（同一用户内）
-    val userId: String,                   // localUserId 外键（本地多账号隔离）
+    val parentId: String? = null,         // Tree construction（for the same user）
+    val userId: String,                   // localUserId foreign key
 
     /* Basic attributes fields */
     val title: String,
     val description: String = "",
-    val priority: String = Priority.None.name, // data层用String，domain层映射Priority enum
+    val priority: String = Priority.None.name, // data layer: String; domain layer mapping to Priority enum
 
     /* Time attributes fields */
     val dueAt: Long? = null,              // Absolute deadline UTC millis; null if unset.
@@ -63,7 +63,7 @@ data class TaskEntity(
     val isCancelled: Boolean = false,
 
     /* Sync attributes fields */
-    val remoteId: String = id,            // ✅ docId 固定：remoteId == id（非空）
+    val remoteId: String = id,            // Fixed id：remoteId == id（not null）
     val createdAt: Long,                  // Creation timestamp UTC millis.
     val updatedAt: Long,                  // Last update timestamp UTC millis.
     val lastSyncedAt: Long? = null,       // Last sync timestamp UTC millis; null if never synced.

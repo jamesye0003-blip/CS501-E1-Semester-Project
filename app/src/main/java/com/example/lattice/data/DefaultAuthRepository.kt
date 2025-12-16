@@ -28,21 +28,37 @@ import kotlinx.coroutines.withContext
 private val USER_ID_KEY = stringPreferencesKey("user_id")
 
 /**
- * Local auth (Room + DataStore) + Firebase binding using username/password only.
- *
+ * 本地认证（Room + DataStore）+ Firebase 绑定，仅使用用户名/密码
+ * 
  * 注意：Firebase Email/Password provider 必须使用 email。
- * 我们对外只暴露 username/password，并在内部把 username 映射为“内部 email”：
- *   internalEmail = sanitize(username) + "@lattice.local"
+ * 我们对外只暴露 username/password，并在内部把 username 映射为"内部 email"：
  * 用户不需要看到/输入 email。
+ * 
+ * Local auth (Room + DataStore) + Firebase binding using username/password only
+ * 
+ * Note: Firebase Email/Password provider must use email.
+ * We only expose username/password externally, and internally map username to "internal email":
+ *   internalEmail = sanitize(username) + "@lattice.local"
+ * Users don't need to see/input email.
  */
 class DefaultAuthRepository(private val context: Context) : AuthRepository {
 
     private val database = AppDatabase.getDatabase(context)
     private val userDao = database.userDao()
 
-    // 不用 Firebase.auth 扩展，直接用实例，避免 “auth” unresolved
+    // Use FirebaseAuth instance directly instead of extension to avoid "auth" unresolved
     private val firebaseAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
+    /**
+     * 认证状态流 / Authentication state flow
+     * 
+     * 观察认证状态变化，当用户 ID 变化时自动切换观察的用户数据。
+     * 如果用户 ID 为空，返回未认证状态；否则观察对应用户的实体数据。
+     * 
+     * Observes authentication state changes, automatically switches observed user data when user ID changes.
+     * Returns unauthenticated state if user ID is blank; otherwise observes corresponding user entity data.
+     */
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
     override val authState: Flow<AuthState> =
         context.authDataStore.data.flatMapLatest { prefs ->
             val userId = prefs[USER_ID_KEY]
@@ -66,6 +82,19 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
             }
         }
 
+    /**
+     * 注册新用户 / Register new user
+     * 
+     * 创建本地用户和 Firebase 用户，并将它们绑定。
+     * 对外只暴露 username/password，内部将 username 映射为内部 email。
+     * 
+     * Creates local user and Firebase user, and binds them together.
+     * Only exposes username/password externally, internally maps username to internal email.
+     * 
+     * @param username 用户名 / Username
+     * @param password 密码 / Password
+     * @return 注册结果，成功时包含用户信息 / Registration result, contains user info on success
+     */
     override suspend fun register(username: String, password: String): Result<User> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -78,14 +107,14 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                 val now = System.currentTimeMillis()
                 val internalEmail = toInternalEmail(username)
 
-                // 1) Create Firebase user (username -> internalEmail)
+                // Create Firebase user (username -> internalEmail)
                 val authResult = firebaseAuth
                     .createUserWithEmailAndPassword(internalEmail, password)
                     .await()
 
                 val uid = authResult.user?.uid ?: error("Firebase uid is null")
 
-                // 2) Create local user, bind remoteId = Firebase uid
+                // Create local user, bind remoteId = Firebase uid
                 val localUserId = UUID.randomUUID().toString()
                 val entity = UserEntity(
                     id = localUserId,
@@ -100,13 +129,28 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                 )
                 userDao.insertUser(entity)
 
-                // 3) Save session
+                // Save session
                 context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = localUserId }
 
                 User(id = entity.id, username = entity.username, email = entity.email)
             }
         }
 
+    /**
+     * 用户登录 / User login
+     * 
+     * 支持离线登录和在线登录。
+     * 先尝试本地验证（支持离线和快速登录），如果本地验证失败，再尝试远程 Firebase 验证。
+     * 适用于首次在本设备登录，或本地数据被清空后的重新登录。
+     * 
+     * Supports offline and online login.
+     * First attempts local verification (supports offline and fast login), if local verification fails, then attempts remote Firebase verification.
+     * Suitable for first-time login on this device, or re-login after local data is cleared.
+     * 
+     * @param username 用户名 / Username
+     * @param password 密码 / Password
+     * @return 登录结果，成功时包含用户信息 / Login result, contains user info on success
+     */
     override suspend fun login(username: String, password: String): Result<User> =
         withContext(Dispatchers.IO) {
             runCatching {
@@ -120,29 +164,29 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                 val localPasswordOk =
                     local != null && !local.isDeleted && verifyPassword(password, local.passwordHash)
 
-                // 1) 先尝试本地验证（支持离线 & 快速登录）
-                if (localPasswordOk) {
-                    // 本地用户存在且密码匹配，直接登录
-                    context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = local!!.id }
+                // Try local verification first (supports offline & fast login)
+                if (localPasswordOk && local != null) {
+                    // Local user exists and password matches, login directly
+                    context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = local.id }
                     return@runCatching User(id = local.id, username = local.username, email = local.email)
                 }
 
-                // 2) 本地不存在该用户或密码不匹配，再尝试远程 Firebase 验证
-                //    适用于：首次在本设备登录，或本地数据被清空后的重新登录。
+                // Local user doesn't exist or password doesn't match, try remote Firebase verification
+                // Suitable for: first-time login on this device, or re-login after local data is cleared
                 val uid = try {
                     val result = firebaseAuth
                         .signInWithEmailAndPassword(internalEmail, password)
                         .await()
                     result.user?.uid ?: error("Firebase uid is null")
                 } catch (e: FirebaseAuthInvalidUserException) {
-                    // 远程没有这个账号：如果本地没有合法用户，就直接抛错
+                    // Remote account doesn't exist: if local has no valid user, throw error directly
                     throw e
                 } catch (e: FirebaseAuthInvalidCredentialsException) {
-                    // 远程密码错误，且本地也无法通过（因为前面 localPasswordOk 已经为 false）
+                    // Remote password error, and local also failed (because localPasswordOk was already false)
                     throw e
                 }
 
-                // 3) 远程验证成功：在本地创建或更新用户，并绑定 remoteId = Firebase uid
+                // Remote verification succeeded: create or update user locally, and bind remoteId = Firebase uid
                 val finalLocal = if (local == null) {
                     val localUserId = UUID.randomUUID().toString()
                     val entity = UserEntity(
@@ -169,18 +213,37 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
                     updated
                 }
 
-                // 4) 保存会话
+                // Save session
                 context.authDataStore.edit { prefs -> prefs[USER_ID_KEY] = finalLocal.id }
 
                 User(id = finalLocal.id, username = finalLocal.username, email = finalLocal.email)
             }
         }
 
+    /**
+     * 用户登出 / User logout
+     * 
+     * 登出 Firebase 并清除本地会话。
+     * 
+     * Signs out from Firebase and clears local session.
+     */
     override suspend fun logout() {
         runCatching { firebaseAuth.signOut() }
         context.authDataStore.edit { prefs -> prefs.remove(USER_ID_KEY) }
     }
 
+    /**
+     * 将用户名转换为内部 email / Convert username to internal email
+     * 
+     * 将用户名清理并转换为符合 Firebase Email/Password provider 要求的内部 email 格式。
+     * 格式：sanitized_username@lattice.local
+     * 
+     * Sanitizes username and converts it to internal email format required by Firebase Email/Password provider.
+     * Format: sanitized_username@lattice.local
+     * 
+     * @param username 用户名 / Username
+     * @return 内部 email 地址 / Internal email address
+     */
     private fun toInternalEmail(username: String): String {
         val raw = username.trim().lowercase()
         val sanitized = raw
@@ -197,7 +260,13 @@ class DefaultAuthRepository(private val context: Context) : AuthRepository {
     }
 }
 
-// -------- Firebase Task await helper (无需额外协程依赖) --------
+/**
+ * Firebase Task await 辅助函数 / Firebase Task await helper
+ * 
+ * 将 Firebase Task 转换为协程挂起函数，无需额外协程依赖。
+ * 
+ * Converts Firebase Task to suspend function, no additional coroutine dependency required.
+ */
 private suspend fun <T> GmsTask<T>.await(): T =
     suspendCancellableCoroutine { cont ->
         addOnCompleteListener { task ->
@@ -206,12 +275,38 @@ private suspend fun <T> GmsTask<T>.await(): T =
         }
     }
 
-// -------- Password hash helpers (local offline auth) --------
+/**
+ * 密码哈希辅助函数（用于本地离线认证）/ Password hash helpers (for local offline auth)
+ * 
+ * 使用 SHA-256 对密码进行哈希处理，支持本地离线认证。
+ * 
+ * Uses SHA-256 to hash passwords, supports local offline authentication.
+ */
+
+/**
+ * 对密码进行哈希处理 / Hash password
+ * 
+ * @param plain 明文密码 / Plain password
+ * @return 哈希后的密码 / Hashed password
+ */
 private fun hashPassword(plain: String): String = sha256Hex(plain)
 
+/**
+ * 验证密码 / Verify password
+ * 
+ * @param plain 明文密码 / Plain password
+ * @param hash 哈希值 / Hash value
+ * @return 是否匹配 / Whether password matches
+ */
 private fun verifyPassword(plain: String, hash: String): Boolean =
     hashPassword(plain) == hash
 
+/**
+ * SHA-256 哈希并返回十六进制字符串 / SHA-256 hash and return hex string
+ * 
+ * @param input 输入字符串 / Input string
+ * @return 十六进制哈希值 / Hex hash value
+ */
 private fun sha256Hex(input: String): String {
     val md = MessageDigest.getInstance("SHA-256")
     val bytes = md.digest(input.toByteArray())

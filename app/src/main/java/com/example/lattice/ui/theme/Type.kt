@@ -6,9 +6,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// 优化 Typography，增加层次感
+// Optimize typography to add visual hierarchy.
 val Typography = Typography(
-    // 页面大标题 (e.g. "Task List")
+    // Page-level title (e.g., "Task List").
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
@@ -16,7 +16,7 @@ val Typography = Typography(
         lineHeight = 40.sp,
         letterSpacing = 0.sp
     ),
-    // 任务标题
+    // Task title
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
@@ -24,7 +24,7 @@ val Typography = Typography(
         lineHeight = 24.sp,
         letterSpacing = 0.15.sp
     ),
-    // 次级标题或强调文本
+    // Secondary title or emphasized text
     titleSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
@@ -32,7 +32,7 @@ val Typography = Typography(
         lineHeight = 20.sp,
         letterSpacing = 0.1.sp
     ),
-    // 正文 (任务描述)
+    // Body text (task description)
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
@@ -40,7 +40,7 @@ val Typography = Typography(
         lineHeight = 20.sp,
         letterSpacing = 0.25.sp
     ),
-    // 辅助信息 (时间、标签)
+    // Supporting information (time, tags)
     bodySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
@@ -48,7 +48,7 @@ val Typography = Typography(
         lineHeight = 16.sp,
         letterSpacing = 0.4.sp
     ),
-    // 按钮文本
+    // Button text
     labelLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,

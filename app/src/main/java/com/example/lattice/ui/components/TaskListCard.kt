@@ -24,7 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.lattice.domain.model.Task
-import com.example.lattice.domain.time.TaskSortOrder
+import com.example.lattice.domain.sort.TaskSortOrder
 
 @Composable
 fun TaskListCard(

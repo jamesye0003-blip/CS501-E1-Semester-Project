@@ -137,7 +137,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun postponeTodayTasks() {
-        // 使用 TimePointUtils 中的统一"今天任务"逻辑
+        // Use the unified "today's tasks" logic defined in TimePointUtils.
         val todayTasks = filterTodayTasks(_tasks.value)
         val todayIds = todayTasks.map { it.id }.toSet()
 
@@ -146,7 +146,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
         _tasks.value = _tasks.value.map { task ->
             if (!task.done && task.id in todayIds && task.dueAt != null) {
-                // 将UTC时刻转换为系统时区，加一天，再转回UTC
+                // Convert the UTC instant to the system timezone, add one day, then convert back to UTC.
                 val zonedDateTime = TimeConverter.toZonedDateTime(task.dueAt, systemZone)
                 val newZonedDateTime = zonedDateTime.plusDays(1)
                 val newDueAt = newZonedDateTime.toInstant()

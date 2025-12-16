@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.Button
@@ -54,6 +56,7 @@ fun LoginScreen(
 
     val uiState by viewModel.uiState.collectAsState()
 
+    // Listen whether user is authenticated
     LaunchedEffect(uiState.isAuthenticated) {
         if (uiState.isAuthenticated) {
             onLoginSuccess()
@@ -65,20 +68,21 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surface) // 纯净背景
+                .background(MaterialTheme.colorScheme.surface) // Pure background
         ) {
             // 1. Brand Header (Deep Blue Background)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(280.dp)
-                    .background(MaterialTheme.colorScheme.primary) // 使用主色调
+                    .background(MaterialTheme.colorScheme.primary) // Use the primary color.
                     .padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.GridView, // 假设这是 Logo
+                    // Suppose this is the Logo, it will be rebuilt when we actually have a Logo.
+                    imageVector = Icons.Filled.GridView,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier
@@ -102,16 +106,18 @@ fun LoginScreen(
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(y = 240.dp) // 向上重叠在 Header 上
+                    .offset(y = 240.dp) // Overlap upward onto the header.
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
                 shape = RoundedCornerShape(16.dp),
-                shadowElevation = 8.dp, // 增加阴影，制造悬浮感
+                shadowElevation = 8.dp, // Add elevation to create a floating effect.
                 tonalElevation = 2.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState()), // Use verticalScroll to prevent the keyboard from obscuring content on small screens,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -151,7 +157,8 @@ fun LoginScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )
-
+                    
+                    // Show a warning message if there is an error present in uiState.
                     if (uiState.error != null) {
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
@@ -178,6 +185,7 @@ fun LoginScreen(
                         enabled = !uiState.isLoading && username.isNotBlank() && password.isNotBlank(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
+                        // Show a loading spinner if currently loading, otherwise show the "Login" text
                         if (uiState.isLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),

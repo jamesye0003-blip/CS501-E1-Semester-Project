@@ -68,6 +68,7 @@ import com.example.lattice.domain.model.AttachmentType
 import com.example.lattice.domain.model.Priority
 import com.example.lattice.domain.model.TimePoint
 import com.example.lattice.domain.time.TimeZoneData
+import com.example.lattice.domain.time.buildTimePoint
 import com.example.lattice.viewModel.EditorViewModel
 import com.example.lattice.ui.theme.PriorityHigh
 import com.example.lattice.ui.theme.PriorityMedium
@@ -101,10 +102,12 @@ fun EditorScreen(
     parentId: String? = null,
     fromBottomNav: Boolean = false
 ) {
+    // Basic UI state: task form fields
     var title by rememberSaveable(initialTitle) { mutableStateOf(initialTitle) }
     var description by rememberSaveable(initialDescription) { mutableStateOf(initialDescription) }
     var selectedPriority by rememberSaveable(initialPriority.name) { mutableStateOf(initialPriority) }
 
+    // Schedule/time state
     var dateText by rememberSaveable(initialTime?.date?.toString()) {
         mutableStateOf(initialTime?.date?.toString() ?: "")
     }
@@ -115,7 +118,6 @@ fun EditorScreen(
     var zoneIdText by rememberSaveable(
         initialTime?.zoneId?.id ?: ZoneId.systemDefault().id
     ) { mutableStateOf(initialTime?.zoneId?.id ?: ZoneId.systemDefault().id) }
-
     var schedulePickerOpen by remember { mutableStateOf(false) }
     
     // Attachment state
@@ -127,6 +129,7 @@ fun EditorScreen(
     var uploadSuccessMessage by remember { mutableStateOf<String?>(null) }
     var showUploadSuccess by remember { mutableStateOf(false) }
 
+    // UI configuration
     val isEditing = initialTitle.isNotBlank()
     val topBarTitle = when {
         isEditing -> "Edit Task"
@@ -134,15 +137,18 @@ fun EditorScreen(
         else -> "New Task"
     }
 
+    // Context and coroutine scope
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // ---- 语音相关：使用 EditorViewModel 管理状态 ----
+    // Speech-to-text state
     val editorViewModel: EditorViewModel = viewModel()
     val sttUiState by editorViewModel.uiState.collectAsState()
+    val isRecording = sttUiState.isRecording
+    val isTranscribing = sttUiState.isTranscribing
+    val speechError = sttUiState.error
     
-    // ---- 附件相关：文件处理和存储 ----
-    // Helper function to copy file to app's internal storage
+    // Attachment helper functions
     fun copyFileToInternalStorage(uri: Uri, fileName: String): File? {
         return try {
             val contentResolver: ContentResolver = context.contentResolver
@@ -163,7 +169,6 @@ fun EditorScreen(
         }
     }
     
-    // Helper function to get file info from URI
     fun getFileInfoFromUri(uri: Uri): Pair<String, Long>? {
         return try {
             val contentResolver: ContentResolver = context.contentResolver
@@ -182,7 +187,7 @@ fun EditorScreen(
         }
     }
     
-    // Camera photo file
+    // Camera and file picker launchers
     val cameraPhotoFile = remember {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", JavaLocale.getDefault()).format(Date())
         val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
@@ -201,7 +206,6 @@ fun EditorScreen(
         )
     }
     
-    // Camera launcher (must be defined before permission launcher)
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
@@ -226,7 +230,6 @@ fun EditorScreen(
         }
     }
     
-    // Camera permission launcher
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -244,7 +247,6 @@ fun EditorScreen(
         }
     }
     
-    // Function to launch camera with permission check
     fun launchCamera() {
         when {
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
@@ -258,7 +260,6 @@ fun EditorScreen(
         }
     }
     
-    // Image picker launcher (Album)
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -287,7 +288,6 @@ fun EditorScreen(
         }
     }
     
-    // File picker launcher (for PDF/DOC)
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -322,11 +322,7 @@ fun EditorScreen(
         }
     }
     
-    val isRecording = sttUiState.isRecording
-    val isTranscribing = sttUiState.isTranscribing
-    val speechError = sttUiState.error
-
-    // 请求 RECORD_AUDIO 权限 - 用于 Title
+    // Speech-to-text permission launchers
     val titlePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -334,7 +330,7 @@ fun EditorScreen(
             editorViewModel.clearError()
             editorViewModel.startRecording(
                 onResult = { text ->
-                    // Title 是单行，直接替换或追加（如果已有内容则追加空格）
+                    // The title is single-line: replace directly, or append with a space if content already exists.
                     title = if (title.isBlank()) {
                         text
                     } else {
@@ -346,8 +342,7 @@ fun EditorScreen(
             editorViewModel.setError("Microphone permission denied.")
         }
     }
-
-    // 请求 RECORD_AUDIO 权限 - 用于 Description
+    
     val descriptionPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -398,7 +393,7 @@ fun EditorScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Title + 语音按钮
+            // Title + Speech-to-Text
             item {
                 OutlinedTextField(
                     value = title,
@@ -420,7 +415,7 @@ fun EditorScreen(
                             if (granted) {
                                 editorViewModel.startRecording(
                                     onResult = { text ->
-                                        // Title 是单行，直接替换或追加（如果已有内容则追加空格）
+                                        // The title is single-line: replace directly, or append with a space if content already exists.
                                         title = if (title.isBlank()) {
                                             text
                                         } else {
@@ -442,7 +437,7 @@ fun EditorScreen(
             )
             }
 
-            // Description + 语音按钮
+            // Description + Speech-to-Text
             item {
                 OutlinedTextField(
                     value = description,
@@ -461,7 +456,7 @@ fun EditorScreen(
                                     zoneIdText,
                                     timeFormatter
                                 )
-                                // ✅ 只触发保存事件，由外部决定是否导航返回
+                                // Only trigger save event.
                                 onSave(title, description, selectedPriority, timePoint, attachments)
                             }
                         }
@@ -673,7 +668,7 @@ fun EditorScreen(
                                     zoneIdText,
                                     timeFormatter
                                 )
-                                // ✅ 同样只负责发出保存事件
+                                // Only trigger save event.
                                 onSave(title, description, selectedPriority, timePoint, attachments)
                             }
                         },
@@ -745,20 +740,4 @@ fun EditorScreen(
     }
 }
 
-private fun buildTimePoint(
-    dateText: String,
-    timeText: String,
-    zoneIdText: String,
-    timeFormatter: DateTimeFormatter
-): TimePoint? {
-    if (dateText.isBlank()) return null
-    val date = runCatching { LocalDate.parse(dateText) }.getOrNull()
-        ?: return null
-    val time = timeText.takeIf { it.isNotBlank() }?.let {
-        LocalTime.parse(it, timeFormatter)
-    }
-    val zone =
-        runCatching { ZoneId.of(zoneIdText) }.getOrElse { ZoneId.systemDefault() }
-    return TimePoint(date = date, time = time, zoneId = zone)
-}
 

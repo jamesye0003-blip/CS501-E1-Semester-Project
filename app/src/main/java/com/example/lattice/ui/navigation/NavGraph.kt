@@ -46,6 +46,7 @@ fun AppNavHost(
         // Login screen
         composable(Route.Login.route) {
             LoginScreen(
+                // When login succeed, navigate to the Main screen.
                 onLoginSuccess = {
                     navController.navigate(Route.Main.route) {
                         popUpTo(Route.Login.route) { inclusive = true }
@@ -59,6 +60,7 @@ fun AppNavHost(
         // Register screen
         composable(Route.Register.route) {
             RegisterScreen(
+                // When register succeed, navigate to the Main screen.
                 onRegisterSuccess = {
                     navController.navigate(Route.Main.route) {
                         popUpTo(Route.Login.route) { inclusive = true }
@@ -74,29 +76,36 @@ fun AppNavHost(
             startDestination = Route.Home.route,
             route = Route.Main.route
         ) {
+            // Home (Task List) screen
             composable(Route.Home.route) {
                 val selectedFilter by taskViewModel.selectedFilter.collectAsState()
                 TaskListScreen(
                     tasks = tasks,
                     selectedFilter = selectedFilter,
                     onFilterSelected = { filter -> taskViewModel.setSelectedFilter(filter) },
+                    // EDITOR_ROUTE: Create a new task from the bottom navigation bar
                     onAddRoot = { navController.navigate(buildEditorRoute(null, null, true)) },
+                    // EDITOR_ROUTE: Add a subtask from TaskListScreen 
                     onAddSub = { parentId -> navController.navigate(buildEditorRoute(parentId, null, false)) },
                     onToggleDone = { id -> taskViewModel.toggleDone(id) },
+                    // EDITOR_ROUTE: Edit a task from TaskListScreen or CalendarScreen
                     onEdit = { id -> navController.navigate(buildEditorRoute(null, id, false)) },
                     onDelete = { id -> taskViewModel.deleteTaskCascade(id) }
                 )
             }
 
-            // NEW: Calendar screen
+            // Calendar screen
             composable(Route.Calendar.route) {
                 CalendarScreen(
                     tasks = tasks,
+                    // EDITOR_ROUTE: Edit a task from TaskListScreen or CalendarScreen
                     onEdit = { id -> navController.navigate(buildEditorRoute(null, id, false)) },
+                    // EDITOR_ROUTE: Create a new task from CalendarScreen
                     onAddTask = { navController.navigate(buildEditorRoute(null, null, false)) }
                 )
             }
-
+            
+            // Editor screen, composed depending on the specific navigation arguments
             composable("editor?parent={parent}&editId={editId}&fromBottomNav={fromBottomNav}") { backStackEntry ->
                 val parentId = backStackEntry.arguments
                     ?.getString("parent")
@@ -145,7 +154,8 @@ fun AppNavHost(
                     }
                 )
             }
-
+            
+            // User Profile screen
             composable(Route.Profile.route) {
                 UserProfileScreen(
                     username = authState.user?.username ?: "User",
@@ -153,7 +163,8 @@ fun AppNavHost(
                     isDarkMode = isDarkMode,
                     onToggleDark = onToggleDark,
                     onPostponeTodayTasks = { taskViewModel.postponeTodayTasks() },
-                    onSyncNow = { taskViewModel.syncNow() },   // ✅ 新增
+                    onSyncNow = { taskViewModel.syncNow() },
+                    // When logout, navigate to the Login screen.
                     onLogout = {
                         authViewModel.logout()
                         navController.navigate(Route.Login.route) {
@@ -165,7 +176,7 @@ fun AppNavHost(
         }
     }
 
-    // Force nav to login when unauthenticated
+    // Listen whether user is authenticated. Force nav to login when unauthenticated
     LaunchedEffect(authState.isAuthenticated) {
         if (!authState.isAuthenticated &&
             navController.currentDestination?.route != Route.Login.route
