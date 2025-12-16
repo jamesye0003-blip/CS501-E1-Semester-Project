@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+
 /**
  * Room数据库中的User实体。
  * User entity in Room database.
@@ -20,11 +21,13 @@ data class UserEntity(
     val username: String,
     val passwordHash: String,
     val email: String? = null,
+    /* Status attributes fields */
+    val isDeleted: Boolean = false,
+    /* Sync attributes fields */
     val remoteId: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
-    val lastSyncedAt: Long? = null,
-    val isDeleted: Boolean = false
+    val lastSyncedAt: Long? = null
 )
 
 

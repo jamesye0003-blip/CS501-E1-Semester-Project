@@ -19,5 +19,7 @@ interface TaskRepository {
      * Delete tasks by ids (cascade handled by caller / ViewModel).
      */
     suspend fun deleteTasks(ids: List<String>)
+
+    suspend fun syncNow(): Result<Unit>
 }
 

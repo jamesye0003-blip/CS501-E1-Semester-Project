@@ -18,13 +18,13 @@ interface UserDao {
     suspend fun insertUser(user: UserEntity)
 
     // READ functions
-    @Query("SELECT * FROM users WHERE id = :id")
+    @Query("SELECT * FROM users WHERE id = :id AND isDeleted = 0")
     fun observeUserById(id: String): Flow<UserEntity?>
 
-    @Query("SELECT * FROM users WHERE id = :id")
+    @Query("SELECT * FROM users WHERE id = :id AND isDeleted = 0")
     suspend fun getUserById(id: String): UserEntity?
     
-    @Query("SELECT * FROM users WHERE username = :username")
+    @Query("SELECT * FROM users WHERE username = :username AND isDeleted = 0")
     suspend fun getUserByUsername(username: String): UserEntity?
 
     // DELETE functions
@@ -33,6 +33,9 @@ interface UserDao {
     
     @Query("DELETE FROM users")
     suspend fun deleteAllUsers()
+
+    @Query("SELECT * FROM users WHERE remoteId = :remoteId AND isDeleted = 0 LIMIT 1")
+    suspend fun getUserByRemoteId(remoteId: String): UserEntity?
 }
 
 
